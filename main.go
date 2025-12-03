@@ -18,7 +18,6 @@ const (
 	angularAccel    = math.Pi * 6 // radians per second^2
 	maxAngularSpeed = math.Pi * 4 // maximum angular speed (radians per second)
 	thrustAccel     = 230.0       // pixels per second^2
-	driftDamping    = 0.995
 	starCount       = 120
 	starBaseSpeed   = 20.0
 )
@@ -110,9 +109,6 @@ func (g *Game) Update() error {
 		g.shipVel.x -= forwardX * thrustAccel * dt * 0.5
 		g.shipVel.y -= forwardY * thrustAccel * dt * 0.5
 	}
-
-	g.shipVel.x *= driftDamping
-	g.shipVel.y *= driftDamping
 
 	g.shipPos.x += g.shipVel.x * dt
 	g.shipPos.y += g.shipVel.y * dt
