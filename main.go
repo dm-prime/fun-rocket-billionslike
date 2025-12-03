@@ -39,6 +39,7 @@ type Game struct {
 	shipVel         vec2
 	shipAngle       float64
 	shipAngularVel  float64 // angular velocity in radians per second
+	health          float64
 	stars           []star
 	thrustThisFrame bool
 	turningThisFrame bool
@@ -50,6 +51,7 @@ func newGame() *Game {
 
 	g := &Game{
 		shipPos: vec2{screenWidth * 0.5, screenHeight * 0.5},
+		health:  100.0,
 		stars:   make([]star, starCount),
 	}
 
@@ -152,8 +154,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.drawShip(screen)
 
-	hud := fmt.Sprintf("Arrow keys / WASD to steer | Speed: %0.1f | Angular Speed: %0.2f rad/s", 
-		math.Hypot(g.shipVel.x, g.shipVel.y), g.shipAngularVel)
+	hud := fmt.Sprintf("Arrow keys / WASD to steer | Speed: %0.1f | Angular Speed: %0.2f rad/s | Health: %0.0f", 
+		math.Hypot(g.shipVel.x, g.shipVel.y), g.shipAngularVel, g.health)
 	ebitenutil.DebugPrint(screen, hud)
 }
 
