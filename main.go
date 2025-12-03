@@ -13,13 +13,14 @@ import (
 )
 
 const (
-	screenWidth   = 900
-	screenHeight  = 600
-	rotationSpeed = math.Pi * 2 // radians per second
-	thrustAccel   = 230.0       // pixels per second^2
-	driftDamping  = 0.995
-	starCount     = 120
-	starBaseSpeed = 20.0
+	screenWidth     = 900
+	screenHeight    = 600
+	angularAccel    = math.Pi * 6 // radians per second^2
+	maxAngularSpeed = math.Pi * 4 // maximum angular speed (radians per second)
+	thrustAccel     = 230.0       // pixels per second^2
+	driftDamping    = 0.995
+	starCount       = 120
+	starBaseSpeed   = 20.0
 )
 
 type vec2 struct {
@@ -38,8 +39,11 @@ type Game struct {
 	shipPos         vec2
 	shipVel         vec2
 	shipAngle       float64
+	shipAngularVel  float64 // angular velocity in radians per second
 	stars           []star
 	thrustThisFrame bool
+	turningThisFrame bool
+	turnDirection    float64 // -1 for left, 1 for right, 0 for none
 }
 
 func newGame() *Game {
@@ -67,13 +71,31 @@ func newGame() *Game {
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
 	g.thrustThisFrame = false
+	g.turningThisFrame = false
+	g.turnDirection = 0
 
+	// Apply angular acceleration based on input
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
-		g.shipAngle -= rotationSpeed * dt
+		g.shipAngularVel -= angularAccel * dt
+		g.turningThisFrame = true
+		g.turnDirection = -1
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
-		g.shipAngle += rotationSpeed * dt
+		g.shipAngularVel += angularAccel * dt
+		g.turningThisFrame = true
+		g.turnDirection = 1
 	}
+
+	// Clamp angular velocity to max speed
+	if g.shipAngularVel > maxAngularSpeed {
+		g.shipAngularVel = maxAngularSpeed
+	}
+	if g.shipAngularVel < -maxAngularSpeed {
+		g.shipAngularVel = -maxAngularSpeed
+	}
+
+	// Update ship angle based on angular velocity
+	g.shipAngle += g.shipAngularVel * dt
 
 	forwardX := math.Sin(g.shipAngle)
 	forwardY := -math.Cos(g.shipAngle)
@@ -134,7 +156,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.drawShip(screen)
 
-	hud := fmt.Sprintf("Arrow keys / WASD to steer | Speed: %0.1f", math.Hypot(g.shipVel.x, g.shipVel.y))
+	hud := fmt.Sprintf("Arrow keys / WASD to steer | Speed: %0.1f | Angular Speed: %0.2f rad/s", 
+		math.Hypot(g.shipVel.x, g.shipVel.y), g.shipAngularVel)
 	ebitenutil.DebugPrint(screen, hud)
 }
 
@@ -170,6 +193,39 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 
 		flameColor := color.NRGBA{R: 255, G: 150 + uint8(rand.Intn(100)), B: 0, A: 255}
 		ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, flameColor)
+	}
+
+	// Draw sideways flames when actively turning (only when input is pressed)
+	// Show flame on the side corresponding to turn direction
+	if g.turningThisFrame {
+		sideFlameLength := 15 + rand.Float64()*5
+		sideFlameColor := color.NRGBA{R: 255, G: 120 + uint8(rand.Intn(80)), B: 0, A: 255}
+
+		if g.turnDirection > 0 {
+			// Turning right - show flame on right side
+			rightFlameAnchor := rotatePoint(vec2{10, 8}, g.shipAngle)
+			rightFlameAnchor.x += g.shipPos.x
+			rightFlameAnchor.y += g.shipPos.y
+			// Outward direction is (1, 0) in local space (pointing right)
+			rightOutwardDir := rotatePoint(vec2{1, 0}, g.shipAngle)
+			rightFlameDir := vec2{
+				x: rightFlameAnchor.x + rightOutwardDir.x*sideFlameLength,
+				y: rightFlameAnchor.y + rightOutwardDir.y*sideFlameLength,
+			}
+			ebitenutil.DrawLine(screen, rightFlameAnchor.x, rightFlameAnchor.y, rightFlameDir.x, rightFlameDir.y, sideFlameColor)
+		} else {
+			// Turning left - show flame on left side
+			leftFlameAnchor := rotatePoint(vec2{-10, 8}, g.shipAngle)
+			leftFlameAnchor.x += g.shipPos.x
+			leftFlameAnchor.y += g.shipPos.y
+			// Outward direction is (-1, 0) in local space (pointing left)
+			leftOutwardDir := rotatePoint(vec2{-1, 0}, g.shipAngle)
+			leftFlameDir := vec2{
+				x: leftFlameAnchor.x + leftOutwardDir.x*sideFlameLength,
+				y: leftFlameAnchor.y + leftOutwardDir.y*sideFlameLength,
+			}
+			ebitenutil.DrawLine(screen, leftFlameAnchor.x, leftFlameAnchor.y, leftFlameDir.x, leftFlameDir.y, sideFlameColor)
+		}
 	}
 }
 
