@@ -13,13 +13,14 @@ import (
 )
 
 const (
-	screenWidth     = 900
-	screenHeight    = 600
-	angularAccel    = math.Pi * 6 // radians per second^2
-	maxAngularSpeed = math.Pi * 4 // maximum angular speed (radians per second)
-	thrustAccel     = 230.0       // pixels per second^2
-	starCount       = 120
-	starBaseSpeed   = 20.0
+	screenWidth        = 900
+	screenHeight       = 600
+	angularAccel       = math.Pi * 6  // radians per second^2
+	angularDampingAccel = math.Pi * 8  // radians per second^2 (for S key)
+	maxAngularSpeed    = math.Pi * 4   // maximum angular speed (radians per second)
+	thrustAccel        = 230.0         // pixels per second^2
+	starCount          = 120
+	starBaseSpeed      = 20.0
 )
 
 type vec2 struct {
@@ -41,9 +42,10 @@ type Game struct {
 	shipAngularVel  float64 // angular velocity in radians per second
 	health          float64
 	stars           []star
-	thrustThisFrame bool
-	turningThisFrame bool
-	turnDirection    float64 // -1 for left, 1 for right, 0 for none
+	thrustThisFrame      bool
+	turningThisFrame     bool
+	turnDirection        float64 // -1 for left, 1 for right, 0 for none
+	dampingAngularSpeed  bool    // true when S key is pressed to dampen angular speed
 }
 
 func newGame() *Game {
@@ -74,6 +76,7 @@ func (g *Game) Update() error {
 	g.thrustThisFrame = false
 	g.turningThisFrame = false
 	g.turnDirection = 0
+	g.dampingAngularSpeed = false
 
 	// Apply angular acceleration based on input
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
@@ -108,8 +111,19 @@ func (g *Game) Update() error {
 	}
 
 	if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-		g.shipVel.x -= forwardX * thrustAccel * dt * 0.5
-		g.shipVel.y -= forwardY * thrustAccel * dt * 0.5
+		// Apply angular damping to reduce angular speed
+		g.dampingAngularSpeed = true
+		if g.shipAngularVel > 0 {
+			g.shipAngularVel -= angularDampingAccel * dt
+			if g.shipAngularVel < 0 {
+				g.shipAngularVel = 0
+			}
+		} else if g.shipAngularVel < 0 {
+			g.shipAngularVel += angularDampingAccel * dt
+			if g.shipAngularVel > 0 {
+				g.shipAngularVel = 0
+			}
+		}
 	}
 
 	g.shipPos.x += g.shipVel.x * dt
@@ -194,37 +208,57 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 	}
 
 	// Draw sideways flames when actively turning (only when input is pressed)
-	// Show flame on the side corresponding to turn direction
 	if g.turningThisFrame {
-		sideFlameLength := 15 + rand.Float64()*5
-		sideFlameColor := color.NRGBA{R: 255, G: 120 + uint8(rand.Intn(80)), B: 0, A: 255}
-
 		if g.turnDirection > 0 {
 			// Turning right - show flame on right side
-			rightFlameAnchor := rotatePoint(vec2{10, 8}, g.shipAngle)
-			rightFlameAnchor.x += g.shipPos.x
-			rightFlameAnchor.y += g.shipPos.y
-			// Outward direction is (1, 0) in local space (pointing right)
-			rightOutwardDir := rotatePoint(vec2{1, 0}, g.shipAngle)
-			rightFlameDir := vec2{
-				x: rightFlameAnchor.x + rightOutwardDir.x*sideFlameLength,
-				y: rightFlameAnchor.y + rightOutwardDir.y*sideFlameLength,
-			}
-			ebitenutil.DrawLine(screen, rightFlameAnchor.x, rightFlameAnchor.y, rightFlameDir.x, rightFlameDir.y, sideFlameColor)
+			g.fireThruster(screen, true)  // right
 		} else {
 			// Turning left - show flame on left side
-			leftFlameAnchor := rotatePoint(vec2{-10, 8}, g.shipAngle)
-			leftFlameAnchor.x += g.shipPos.x
-			leftFlameAnchor.y += g.shipPos.y
-			// Outward direction is (-1, 0) in local space (pointing left)
-			leftOutwardDir := rotatePoint(vec2{-1, 0}, g.shipAngle)
-			leftFlameDir := vec2{
-				x: leftFlameAnchor.x + leftOutwardDir.x*sideFlameLength,
-				y: leftFlameAnchor.y + leftOutwardDir.y*sideFlameLength,
-			}
-			ebitenutil.DrawLine(screen, leftFlameAnchor.x, leftFlameAnchor.y, leftFlameDir.x, leftFlameDir.y, sideFlameColor)
+			g.fireThruster(screen, false) // left
 		}
 	}
+
+	// Draw angular damping thruster when S is pressed (fires on side that opposes rotation)
+	if g.dampingAngularSpeed && math.Abs(g.shipAngularVel) > 0.1 {
+		// Fire thruster on the side that opposes current rotation
+		if g.shipAngularVel > 0 {
+			// Rotating right, fire left thruster to counter
+			g.fireThruster(screen, false) // left
+		} else {
+			// Rotating left, fire right thruster to counter
+			g.fireThruster(screen, true) // right
+		}
+	}
+}
+
+func (g *Game) fireThruster(screen *ebiten.Image, right bool) {
+	// right: true for right side, false for left side
+	sideOffset := -10.0 // left side
+	if right {
+		sideOffset = 10.0 // right side
+	}
+
+	sideFlameLength := 15 + rand.Float64()*5
+	sideFlameColor := color.NRGBA{R: 255, G: 120 + uint8(rand.Intn(80)), B: 0, A: 255}
+
+	// Position flame anchor on the side of the ship, near the back
+	flameAnchor := rotatePoint(vec2{sideOffset, 8}, g.shipAngle)
+	flameAnchor.x += g.shipPos.x
+	flameAnchor.y += g.shipPos.y
+
+	// Outward direction: (1, 0) for right side, (-1, 0) for left side in local space
+	outwardDirX := -1.0 // left
+	if right {
+		outwardDirX = 1.0 // right
+	}
+	outwardDir := rotatePoint(vec2{outwardDirX, 0}, g.shipAngle)
+	
+	flameDir := vec2{
+		x: flameAnchor.x + outwardDir.x*sideFlameLength,
+		y: flameAnchor.y + outwardDir.y*sideFlameLength,
+	}
+
+	ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, sideFlameColor)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
