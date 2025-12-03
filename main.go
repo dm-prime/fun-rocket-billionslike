@@ -156,11 +156,15 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, color.White)
 
 	if g.thrustThisFrame {
-		flameAnchor := rotatePoint(vec2{0, 14}, g.shipAngle)
+		// Position flame at the back center of the ship (midpoint of left and right back points)
+		flameAnchor := rotatePoint(vec2{0, 12}, g.shipAngle)
 		flameAnchor.x += g.shipPos.x
 		flameAnchor.y += g.shipPos.y
 
-		flameDir := rotatePoint(vec2{0, 28 + rand.Float64()*8}, g.shipAngle+math.Pi)
+		// Flame extends backward from the ship (opposite direction of forward movement)
+		// The back is at y=12, so we extend further back (positive y in local space)
+		flameLength := 28 + rand.Float64()*8
+		flameDir := rotatePoint(vec2{0, 12 + flameLength}, g.shipAngle)
 		flameDir.x += g.shipPos.x
 		flameDir.y += g.shipPos.y
 
