@@ -98,6 +98,22 @@ func (g *Game) Update() error {
 		g.shipAngularVel = -maxAngularSpeed
 	}
 
+	// Automatically apply angular damping when no turn input (A/D not pressed)
+	if !g.turningThisFrame && math.Abs(g.shipAngularVel) > 0.01 {
+		// Gradually reduce angular velocity
+		if g.shipAngularVel > 0 {
+			g.shipAngularVel -= angularDampingAccel * dt * 0.5
+			if g.shipAngularVel < 0 {
+				g.shipAngularVel = 0
+			}
+		} else {
+			g.shipAngularVel += angularDampingAccel * dt * 0.5
+			if g.shipAngularVel > 0 {
+				g.shipAngularVel = 0
+			}
+		}
+	}
+
 	// Update ship angle based on angular velocity
 	g.shipAngle += g.shipAngularVel * dt
 
@@ -218,7 +234,20 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 		}
 	}
 
+	// Automatically fire rotation cancellation thruster when no turn input but still rotating
+	if !g.turningThisFrame && math.Abs(g.shipAngularVel) > 0.1 {
+		// Fire thruster on the side that opposes current rotation
+		if g.shipAngularVel > 0 {
+			// Rotating right, fire left thruster to counter
+			g.fireThruster(screen, false) // left
+		} else {
+			// Rotating left, fire right thruster to counter
+			g.fireThruster(screen, true) // right
+		}
+	}
+
 	// Draw angular damping thruster when S is pressed (fires on side that opposes rotation)
+	// S key provides stronger/faster damping
 	if g.dampingAngularSpeed && math.Abs(g.shipAngularVel) > 0.1 {
 		// Fire thruster on the side that opposes current rotation
 		if g.shipAngularVel > 0 {
