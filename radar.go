@@ -293,6 +293,11 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			// Draw dot
 			drawCircle(screen, baseX, baseY, radarBlipSize, b.blipColor)
 			ebitenutil.DebugPrintAt(screen, b.label, int(b.labelX), int(b.labelY))
+			
+			// Draw state label below distance
+			state := g.getNPCState(b.shipIndex)
+			stateLabel := g.getNPCStateString(state)
+			ebitenutil.DebugPrintAt(screen, stateLabel, int(b.labelX), int(b.labelY)+12)
 		} else {
 			// Multiple blips, stack them vertically
 			// Sort by distance (closest first, so it's at the bottom of the stack)
@@ -349,6 +354,11 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 					labelY = dotY - radarLabelOffsetY
 				}
 				ebitenutil.DebugPrintAt(screen, b.label, int(labelX), int(labelY))
+				
+				// Draw state label below distance
+				state := g.getNPCState(b.shipIndex)
+				stateLabel := g.getNPCStateString(state)
+				ebitenutil.DebugPrintAt(screen, stateLabel, int(labelX), int(labelY)+12)
 			}
 		}
 	}

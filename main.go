@@ -16,6 +16,7 @@ func newGame() *Game {
 		dust:             make([]dust, dustCount),
 		radarTrails:      make(map[int][]RadarTrailPoint),
 		radarTrailTimers: make(map[int]float64),
+		npcStates:        make(map[int]NPCState),
 	}
 	g.initFactions()
 

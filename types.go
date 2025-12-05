@@ -47,6 +47,7 @@ type Game struct {
 	alliances        map[string]map[string]bool
 	radarTrails      map[int][]RadarTrailPoint // ship index -> trail points
 	radarTrailTimers map[int]float64           // ship index -> time since last trail point
+	npcStates        map[int]NPCState          // ship index -> NPC state
 	initialized      bool                      // track if screen size has been initialized
 	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
 }

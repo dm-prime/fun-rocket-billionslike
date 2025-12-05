@@ -15,7 +15,7 @@ const (
 	angularAccel             = math.Pi * 3 // radians per second^2
 	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
 	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
-	thrustAccel              = 350.0       // pixels per second^2
+	thrustAccel              = 500.0       // pixels per second^2
 	sideThrustAccel          = 77.0        // pixels per second^2 (side thruster acceleration)
 	dustCount                = 70
 	dustBaseSpeed            = 20.0
@@ -39,13 +39,13 @@ const (
 var (
 	colorBackground       = color.NRGBA{R: 3, G: 5, B: 16, A: 255}
 	colorDust             = color.NRGBA{R: 100, G: 100, B: 100, A: 255}
-	colorVelocityVector    = color.NRGBA{R: 0, G: 255, B: 0, A: 255}
-	colorRadarBackdrop     = color.NRGBA{R: 10, G: 16, B: 32, A: 230}
-	colorRadarRing         = color.NRGBA{R: 24, G: 48, B: 96, A: 255}
-	colorRadarHeading      = color.NRGBA{R: 120, G: 210, B: 255, A: 255}
-	colorRadarPlayer       = color.NRGBA{R: 180, G: 255, B: 200, A: 255}
-	colorRadarSpeedVector  = color.NRGBA{R: 120, G: 220, B: 255, A: 220}
-	colorRadarFlame        = color.NRGBA{R: 255, G: 180, B: 60, A: 255}
+	colorVelocityVector   = color.NRGBA{R: 0, G: 255, B: 0, A: 255}
+	colorRadarBackdrop    = color.NRGBA{R: 10, G: 16, B: 32, A: 230}
+	colorRadarRing        = color.NRGBA{R: 24, G: 48, B: 96, A: 255}
+	colorRadarHeading     = color.NRGBA{R: 120, G: 210, B: 255, A: 255}
+	colorRadarPlayer      = color.NRGBA{R: 180, G: 255, B: 200, A: 255}
+	colorRadarSpeedVector = color.NRGBA{R: 120, G: 220, B: 255, A: 220}
+	colorRadarFlame       = color.NRGBA{R: 255, G: 180, B: 60, A: 255}
 )
 
 // Ship geometry constants
@@ -87,5 +87,3 @@ const (
 	dustSpanMultiplier = 1.5
 	trailOpacityMax    = 0.6
 )
-
-
