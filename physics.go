@@ -219,81 +219,236 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 	}
 }
 
-// updateNPC updates an NPC ship to follow the player
+// NPC behavior constants
+const (
+	npcDesiredDist      = 120.0       // standoff distance from player
+	npcBrakeDist        = 200.0       // start considering braking here
+	npcMaxApproachVel   = 180.0       // max relative approach velocity
+	npcInterceptLead    = 1.2         // seconds to lead target prediction
+	npcThrustFactor     = 0.7         // NPC thrust multiplier (slightly slower than player)
+	npcAlignThreshold   = 0.03        // radians, angle considered "aligned"
+	npcBrakeAlignThresh = math.Pi / 8 // must be within this to brake effectively
+)
+
+// updateNPC updates an NPC ship with intelligent pursuit/intercept behavior
 func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	npc.thrustThisFrame = false
 	npc.turningThisFrame = false
 	npc.turnDirection = 0
 
-	// Calculate direction to player
+	// === PHASE 1: Calculate pursuit geometry ===
+
+	// Relative position
 	dx := player.pos.x - npc.pos.x
 	dy := player.pos.y - npc.pos.y
 	dist := math.Hypot(dx, dy)
 
-	// If very close, don't move
-	if dist < 10 {
-		// Apply damping to slow down
-		npc.vel.x *= 0.95
-		npc.vel.y *= 0.95
-		npc.pos.x += npc.vel.x * dt
-		npc.pos.y += npc.vel.y * dt
-		return
+	// Relative velocity (positive = NPC moving toward player)
+	relVelX := npc.vel.x - player.vel.x
+	relVelY := npc.vel.y - player.vel.y
+	relSpeed := math.Hypot(relVelX, relVelY)
+
+	// Closing rate: positive = closing in, negative = separating
+	closingRate := 0.0
+	if dist > 0.1 {
+		closingRate = (dx*relVelX + dy*relVelY) / dist
 	}
 
-	// Calculate target angle (direction to player)
-	targetAngle := math.Atan2(dx, -dy) // Using -dy because ship forward is (sin(angle), -cos(angle))
-	angleDiff := normalizeAngle(targetAngle - npc.angle)
+	// === PHASE 2: Compute intercept point ===
 
-	// Turn towards the player
-	if math.Abs(angleDiff) > 0.05 { // Small threshold to avoid jitter
-		npc.turningThisFrame = true
-		if angleDiff > 0 {
-			npc.angularVel += angularAccel * dt
-			npc.turnDirection = 1
+	// Lead the target based on current velocities
+	leadTime := math.Min(dist/300.0, npcInterceptLead) // scale lead time with distance
+	if leadTime < 0.1 {
+		leadTime = 0.1
+	}
+
+	// Predict where player will be
+	interceptX := player.pos.x + player.vel.x*leadTime
+	interceptY := player.pos.y + player.vel.y*leadTime
+
+	// Direction to intercept point
+	idx := interceptX - npc.pos.x
+	idy := interceptY - npc.pos.y
+	interceptDist := math.Hypot(idx, idy)
+
+	// === PHASE 3: Decide behavior mode ===
+
+	// Determine what we should be doing
+	shouldBrake := false
+	shouldThrust := false
+	shouldMatchVel := false
+
+	if dist < npcDesiredDist*0.8 {
+		// Very close - match player velocity (formation keep)
+		shouldMatchVel = true
+	} else if closingRate > npcMaxApproachVel && dist < npcBrakeDist {
+		// Approaching too fast - need to brake
+		shouldBrake = true
+	} else if dist > npcDesiredDist {
+		// Far away - pursue
+		shouldThrust = true
+	}
+
+	// === PHASE 4: Calculate target heading ===
+
+	var targetAngle float64
+	if shouldBrake {
+		// Point retrograde (opposite to our velocity relative to player)
+		if relSpeed > 5 {
+			targetAngle = math.Atan2(-relVelX, relVelY)
 		} else {
-			npc.angularVel -= angularAccel * dt
-			npc.turnDirection = -1
+			// Low relative speed - just face the player
+			targetAngle = math.Atan2(dx, -dy)
 		}
 	} else {
-		// Close enough - dampen angular velocity
-		if math.Abs(npc.angularVel) > 0.01 {
-			if npc.angularVel > 0 {
-				npc.angularVel -= angularDampingAccel * dt * 0.5
-				if npc.angularVel < 0 {
-					npc.angularVel = 0
-				}
-			} else {
-				npc.angularVel += angularDampingAccel * dt * 0.5
-				if npc.angularVel > 0 {
-					npc.angularVel = 0
-				}
-			}
+		// Point toward intercept
+		if interceptDist > 1 {
+			targetAngle = math.Atan2(idx, -idy)
+		} else {
+			targetAngle = npc.angle // hold current heading
 		}
 	}
 
-	// Clamp angular velocity to max speed
-	if npc.angularVel > maxAngularSpeed {
-		npc.angularVel = maxAngularSpeed
-	}
-	if npc.angularVel < -maxAngularSpeed {
-		npc.angularVel = -maxAngularSpeed
+	angleDiff := normalizeAngle(targetAngle - npc.angle)
+
+	// === PHASE 5: Smart angular control ===
+
+	// Predict where we'll end up if we start braking angular velocity now
+	stoppingAngle := predictAngularStop(npc.angle, npc.angularVel, angularDampingAccel)
+	predictedDiff := normalizeAngle(targetAngle - stoppingAngle)
+
+	if math.Abs(angleDiff) > npcAlignThreshold {
+		npc.turningThisFrame = true
+
+		// Are we spinning the right way?
+		spinningRight := npc.angularVel > 0.1
+		spinningLeft := npc.angularVel < -0.1
+		needRight := angleDiff > 0
+		needLeft := angleDiff < 0
+
+		if spinningRight && needRight {
+			// Spinning right, need to go right - check if we should brake
+			if math.Abs(predictedDiff) < npcAlignThreshold*2 {
+				// We'll overshoot - brake now
+				npc.angularVel -= angularDampingAccel * dt
+				npc.turnDirection = -1
+			} else {
+				// Keep accelerating
+				npc.angularVel += angularAccel * dt
+				npc.turnDirection = 1
+			}
+		} else if spinningLeft && needLeft {
+			// Spinning left, need to go left - check overshoot
+			if math.Abs(predictedDiff) < npcAlignThreshold*2 {
+				npc.angularVel += angularDampingAccel * dt
+				npc.turnDirection = 1
+			} else {
+				npc.angularVel -= angularAccel * dt
+				npc.turnDirection = -1
+			}
+		} else if spinningRight && needLeft {
+			// Wrong direction - brake hard
+			npc.angularVel -= angularDampingAccel * dt
+			npc.turnDirection = -1
+		} else if spinningLeft && needRight {
+			// Wrong direction - brake hard
+			npc.angularVel += angularDampingAccel * dt
+			npc.turnDirection = 1
+		} else {
+			// Not spinning much - accelerate toward target
+			if needRight {
+				npc.angularVel += angularAccel * dt
+				npc.turnDirection = 1
+			} else {
+				npc.angularVel -= angularAccel * dt
+				npc.turnDirection = -1
+			}
+		}
+	} else {
+		// Aligned - dampen remaining spin
+		applyAngularDamping(npc, dt)
 	}
 
-	// Update ship angle based on angular velocity
+	// Clamp angular velocity
+	npc.angularVel = clamp(npc.angularVel, -maxAngularSpeed, maxAngularSpeed)
+
+	// Update angle
 	npc.angle += npc.angularVel * dt
 
-	// Accelerate towards player (thrust forward)
+	// === PHASE 6: Apply thrust ===
+
 	forwardX := math.Sin(npc.angle)
 	forwardY := -math.Cos(npc.angle)
 
-	// Only thrust if reasonably aligned with target (within 45 degrees)
-	if math.Abs(angleDiff) < math.Pi/4 {
-		npc.vel.x += forwardX * thrustAccel * dt
-		npc.vel.y += forwardY * thrustAccel * dt
-		npc.thrustThisFrame = true
+	if shouldMatchVel {
+		// Velocity matching mode - gradually match player velocity
+		velDiffX := player.vel.x - npc.vel.x
+		velDiffY := player.vel.y - npc.vel.y
+		matchRate := 2.0 * dt // how fast to converge
+
+		npc.vel.x += velDiffX * matchRate
+		npc.vel.y += velDiffY * matchRate
+
+		// Show thrust if we're actually accelerating
+		if math.Hypot(velDiffX, velDiffY) > 10 {
+			npc.thrustThisFrame = true
+		}
+	} else if shouldBrake {
+		// Braking - only thrust if aligned with retrograde
+		if math.Abs(angleDiff) < npcBrakeAlignThresh {
+			thrust := thrustAccel * npcThrustFactor * dt
+			npc.vel.x += forwardX * thrust
+			npc.vel.y += forwardY * thrust
+			npc.thrustThisFrame = true
+		}
+	} else if shouldThrust {
+		// Pursuit - thrust if reasonably aligned with target
+		if math.Abs(angleDiff) < math.Pi/3 {
+			thrust := thrustAccel * npcThrustFactor * dt
+			npc.vel.x += forwardX * thrust
+			npc.vel.y += forwardY * thrust
+			npc.thrustThisFrame = true
+		}
 	}
 
 	// Update position
 	npc.pos.x += npc.vel.x * dt
 	npc.pos.y += npc.vel.y * dt
+}
+
+// predictAngularStop predicts the angle when angular velocity reaches zero
+func predictAngularStop(angle, angVel, decel float64) float64 {
+	if math.Abs(angVel) < 0.01 {
+		return angle
+	}
+	// Time to stop: t = |v| / a
+	// Distance traveled: d = v*t - 0.5*a*t^2 = v^2 / (2*a)
+	stopDist := (angVel * math.Abs(angVel)) / (2 * decel)
+	return angle + stopDist
+}
+
+// applyAngularDamping reduces angular velocity toward zero
+func applyAngularDamping(ship *Ship, dt float64) {
+	if ship.angularVel > 0.01 {
+		ship.angularVel -= angularDampingAccel * dt * 0.5
+		if ship.angularVel < 0 {
+			ship.angularVel = 0
+		}
+	} else if ship.angularVel < -0.01 {
+		ship.angularVel += angularDampingAccel * dt * 0.5
+		if ship.angularVel > 0 {
+			ship.angularVel = 0
+		}
+	}
+}
+
+// clamp limits a value to a range
+func clamp(v, min, max float64) float64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
