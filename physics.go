@@ -206,10 +206,12 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 		}
 	}
 
-	// Always fire main engine while in retrograde mode (continuous alignment + burn)
-	forwardX := math.Sin(ship.angle)
-	forwardY := -math.Cos(ship.angle)
-	ship.vel.x += forwardX * thrustAccel * dt
-	ship.vel.y += forwardY * thrustAccel * dt
-	ship.thrustThisFrame = true
+	// Only burn when closely aligned to retrograde to avoid thrusting off-axis.
+	if math.Abs(angleDiff) <= retroBurnAlignWindow {
+		forwardX := math.Sin(ship.angle)
+		forwardY := -math.Cos(ship.angle)
+		ship.vel.x += forwardX * thrustAccel * dt
+		ship.vel.y += forwardY * thrustAccel * dt
+		ship.thrustThisFrame = true
+	}
 }

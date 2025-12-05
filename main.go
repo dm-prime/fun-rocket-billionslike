@@ -24,6 +24,7 @@ const (
 	retroAlignTolerance      = 20 * math.Pi / 180 // radians
 	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
 	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
+	retroBurnAlignWindow     = 8 * math.Pi / 180  // radians, must be within this to burn
 	radarRadius              = 70.0
 	radarRange               = 520.0
 	radarMargin              = 14.0
