@@ -88,3 +88,4 @@ const (
 	trailOpacityMax    = 0.6
 )
 
+

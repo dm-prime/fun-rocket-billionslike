@@ -150,3 +150,4 @@ func (g *Game) drawHUD(screen *ebiten.Image, player *Ship) {
 	ebitenutil.DebugPrint(screen, hud)
 }
 
+

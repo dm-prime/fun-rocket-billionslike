@@ -31,3 +31,4 @@ func (g *Game) handleInput() {
 	g.prevAltEnter = altEnterPressed
 }
 
+

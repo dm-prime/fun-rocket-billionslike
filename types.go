@@ -51,3 +51,4 @@ type Game struct {
 	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
 }
 
+

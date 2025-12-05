@@ -54,3 +54,4 @@ func (g *Game) colorForFaction(faction string) color.NRGBA {
 	}
 	return color.NRGBA{R: 200, G: 200, B: 200, A: 255}
 }
+

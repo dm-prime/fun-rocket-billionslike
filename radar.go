@@ -402,3 +402,4 @@ func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, bas
 	}
 }
 
+
