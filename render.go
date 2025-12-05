@@ -28,5 +28,3 @@ func drawCircle(dst *ebiten.Image, cx, cy, radius float64, clr color.Color) {
 		dst.Set(int(x), int(y), clr)
 	}
 }
-
-

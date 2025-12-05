@@ -10,7 +10,7 @@ import (
 )
 
 // drawRadarTrail draws a trail segment on the radar with proper transformations and fading
-func (g *Game) drawRadarTrail(screen *ebiten.Image, trail []RadarTrailPoint, trailColor color.NRGBA, player *Ship, center vec2, scale float64) {
+func (g *Game) drawRadarTrail(screen *ebiten.Image, trail []RadarTrailPoint, trailColor color.NRGBA, player *Ship, center vec2, scale float64, radarRadius float64) {
 	if len(trail) <= 1 {
 		return
 	}
@@ -117,6 +117,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 	center := screenCenter
 
 	// Radar backdrop
+	radarRadius := getRadarRadius()
 	drawCircle(screen, center.x, center.y, radarRadius+radarEdgeMargin, colorRadarBackdrop)
 	drawCircle(screen, center.x, center.y, radarRadius, colorRadarRing)
 
@@ -131,7 +132,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 	scale := radarRadius / radarRange
 
 	// Draw player trail
-	g.drawRadarTrail(screen, g.radarTrails[g.playerIndex], colorRadarPlayer, player, center, scale)
+	g.drawRadarTrail(screen, g.radarTrails[g.playerIndex], colorRadarPlayer, player, center, scale, radarRadius)
 
 	// Collect all radar blip data
 	type radarBlip struct {
@@ -275,7 +276,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			continue
 		}
 		trailColor := g.colorForFaction(g.ships[i].faction)
-		g.drawRadarTrail(screen, g.radarTrails[i], trailColor, player, center, scale)
+		g.drawRadarTrail(screen, g.radarTrails[i], trailColor, player, center, scale, radarRadius)
 	}
 
 	// Draw dots, labels, and indicators with stacking
@@ -288,7 +289,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			enemy := &g.ships[b.shipIndex]
 
 			// Draw indicators first (so they appear behind the dot)
-			g.drawRadarIndicators(screen, enemy, baseX, baseY, b.blipColor, player, scale)
+			g.drawRadarIndicators(screen, enemy, baseX, baseY, b.blipColor, player, scale, radarRadius)
 
 			// Draw dot
 			drawCircle(screen, baseX, baseY, radarBlipSize, b.blipColor)
@@ -320,7 +321,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				enemy := &g.ships[b.shipIndex]
 
 				// Draw indicators first (so they appear behind the dot)
-				g.drawRadarIndicators(screen, enemy, dotX, dotY, b.blipColor, player, scale)
+				g.drawRadarIndicators(screen, enemy, dotX, dotY, b.blipColor, player, scale, radarRadius)
 
 				// Draw dot
 				drawCircle(screen, dotX, dotY, radarBlipSize, b.blipColor)
@@ -365,7 +366,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 }
 
 // drawRadarIndicators draws facing direction, engine burn, and speed vector indicators for an enemy on the radar
-func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64) {
+func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64, radarRadius float64) {
 	// Facing direction triangle (smaller version of ship triangle)
 	renderAngle := enemy.angle - player.angle
 	// Triangle points in local space (nose up) - scaled down for radar

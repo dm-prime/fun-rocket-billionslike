@@ -149,5 +149,3 @@ func (g *Game) drawHUD(screen *ebiten.Image, player *Ship) {
 		math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
 	ebitenutil.DebugPrint(screen, hud)
 }
-
-

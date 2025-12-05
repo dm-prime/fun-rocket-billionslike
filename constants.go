@@ -23,8 +23,7 @@ const (
 	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
 	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
 	retroBurnAlignWindow     = 8 * math.Pi / 180  // radians, must be within this to burn
-	radarRadius              = 200.0
-	radarRange               = 1520.0
+	radarRange               = 5000
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
 	indicatorArrowLen        = 18.0
@@ -87,3 +86,8 @@ const (
 	dustSpanMultiplier = 1.5
 	trailOpacityMax    = 0.6
 )
+
+// getRadarRadius returns the radar radius as 80% of screen height (radius = 40% of height)
+func getRadarRadius() float64 {
+	return float64(screenHeight) * 0.4
+}

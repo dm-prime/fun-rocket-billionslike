@@ -121,5 +121,3 @@ func (g *Game) fireThruster(screen *ebiten.Image, ship *Ship, right bool, center
 
 	ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, sideFlameColor)
 }
-
-
