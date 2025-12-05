@@ -13,14 +13,17 @@ import (
 )
 
 const (
-	screenWidth        = 900
-	screenHeight       = 600
-	angularAccel       = math.Pi * 6  // radians per second^2
-	angularDampingAccel = math.Pi * 8  // radians per second^2 (for S key)
-	maxAngularSpeed    = math.Pi * 4   // maximum angular speed (radians per second)
-	thrustAccel        = 230.0         // pixels per second^2
-	starCount          = 120
-	starBaseSpeed      = 20.0
+	screenWidth              = 900
+	screenHeight             = 600
+	angularAccel             = math.Pi * 6 // radians per second^2
+	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
+	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
+	thrustAccel              = 230.0       // pixels per second^2
+	starCount                = 120
+	starBaseSpeed            = 20.0
+	retroAlignTolerance      = 20 * math.Pi / 180 // radians
+	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
+	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
 )
 
 type vec2 struct {
@@ -36,16 +39,18 @@ type star struct {
 
 // Game holds the minimal state required for a simple arcade-feel spaceship demo.
 type Game struct {
-	shipPos         vec2
-	shipVel         vec2
-	shipAngle       float64
-	shipAngularVel  float64 // angular velocity in radians per second
-	health          float64
-	stars           []star
-	thrustThisFrame      bool
-	turningThisFrame     bool
-	turnDirection        float64 // -1 for left, 1 for right, 0 for none
-	dampingAngularSpeed  bool    // true when S key is pressed to dampen angular speed
+	shipPos             vec2
+	shipVel             vec2
+	shipAngle           float64
+	shipAngularVel      float64 // angular velocity in radians per second
+	health              float64
+	stars               []star
+	thrustThisFrame     bool
+	turningThisFrame    bool
+	turnDirection       float64 // -1 for left, 1 for right, 0 for none
+	dampingAngularSpeed bool    // true when S key is pressed to dampen angular speed
+	retrogradeMode      bool    // true when performing retrograde burn maneuver
+	retrogradeTurnDir   float64 // chosen turn direction for retrograde (-1 or 1)
 }
 
 func newGame() *Game {
@@ -126,19 +131,22 @@ func (g *Game) Update() error {
 		g.thrustThisFrame = true
 	}
 
+	// S key activates retrograde burn mode
 	if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-		// Apply angular damping to reduce angular speed
-		g.dampingAngularSpeed = true
-		if g.shipAngularVel > 0 {
-			g.shipAngularVel -= angularDampingAccel * dt
-			if g.shipAngularVel < 0 {
-				g.shipAngularVel = 0
-			}
-		} else if g.shipAngularVel < 0 {
-			g.shipAngularVel += angularDampingAccel * dt
-			if g.shipAngularVel > 0 {
-				g.shipAngularVel = 0
-			}
+		if !g.retrogradeMode {
+			// Entering retrograde mode - calculate the fastest turn direction
+			g.retrogradeMode = true
+			g.retrogradeTurnDir = g.calculateFastestRetrogradeTurn()
+		}
+		// Execute retrograde burn maneuver
+		if g.retrogradeMode {
+			g.executeRetrogradeBurn(dt)
+		}
+	} else {
+		// S key not held - immediately cancel retrograde mode
+		if g.retrogradeMode {
+			g.retrogradeMode = false
+			g.retrogradeTurnDir = 0
 		}
 	}
 
@@ -147,6 +155,144 @@ func (g *Game) Update() error {
 
 	g.updateStars(dt)
 	return nil
+}
+
+// normalizeAngle normalizes an angle to the range [-π, π]
+func normalizeAngle(angle float64) float64 {
+	for angle > math.Pi {
+		angle -= 2 * math.Pi
+	}
+	for angle < -math.Pi {
+		angle += 2 * math.Pi
+	}
+	return angle
+}
+
+// estimateTurnTime estimates time to turn a given distance considering current angular velocity
+func estimateTurnTime(targetDist, currentAngVel, accel float64) float64 {
+	if targetDist < 0 {
+		targetDist = -targetDist
+		currentAngVel = -currentAngVel
+	}
+
+	if currentAngVel >= 0 {
+		if currentAngVel > 0 {
+			stopDist := 0.5 * currentAngVel * currentAngVel / accel
+			if stopDist >= targetDist {
+				overshoot := stopDist - targetDist
+				brakeTime := currentAngVel / accel
+				returnTime := math.Sqrt(2*overshoot/accel) * 2
+				return brakeTime + returnTime
+			}
+			remainingDist := targetDist - stopDist
+			return currentAngVel/accel + math.Sqrt(4*remainingDist/accel)
+		}
+		return math.Sqrt(4 * targetDist / accel)
+	}
+	stopTime := -currentAngVel / accel
+	stopDist := 0.5 * currentAngVel * currentAngVel / accel
+	newTargetDist := targetDist + stopDist
+	return stopTime + math.Sqrt(4*newTargetDist/accel)
+}
+
+// calculateFastestRetrogradeTurn determines which direction to turn for fastest retrograde alignment
+func (g *Game) calculateFastestRetrogradeTurn() float64 {
+	speed := math.Hypot(g.shipVel.x, g.shipVel.y)
+	if speed < 5.0 {
+		return 0
+	}
+
+	// Calculate retrograde angle (opposite to velocity)
+	// Ship forward is (sin(angle), -cos(angle))
+	targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
+	angleDiff := normalizeAngle(targetAngle - g.shipAngle)
+
+	// Calculate time for short path vs long path
+	shortTime := estimateTurnTime(angleDiff, g.shipAngularVel, angularAccel)
+
+	var longDist float64
+	if angleDiff > 0 {
+		longDist = angleDiff - 2*math.Pi
+	} else {
+		longDist = angleDiff + 2*math.Pi
+	}
+	longTime := estimateTurnTime(longDist, g.shipAngularVel, angularAccel)
+
+	// Choose the faster direction
+	if shortTime <= longTime {
+		if angleDiff >= 0 {
+			return 1.0 // turn right
+		}
+		return -1.0 // turn left
+	}
+	if longDist >= 0 {
+		return 1.0
+	}
+	return -1.0
+}
+
+// executeRetrogradeBurn handles the retrograde burn maneuver each frame
+func (g *Game) executeRetrogradeBurn(dt float64) {
+	speed := math.Hypot(g.shipVel.x, g.shipVel.y)
+
+	// Check if velocity is killed
+	if speed < 2.0 {
+		g.retrogradeMode = false
+		g.retrogradeTurnDir = 0
+		return
+	}
+
+	// Recalculate target angle each frame
+	targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
+	angleDiff := normalizeAngle(targetAngle - g.shipAngle)
+
+	// 20 degrees in radians
+	alignmentThreshold := 20.0 * math.Pi / 180.0
+
+	if math.Abs(angleDiff) > alignmentThreshold {
+		// Still need to align - apply turn in chosen direction
+		g.turningThisFrame = true
+		g.turnDirection = g.retrogradeTurnDir
+		g.dampingAngularSpeed = true
+
+		if g.retrogradeTurnDir > 0 {
+			g.shipAngularVel += angularAccel * dt
+		} else {
+			g.shipAngularVel -= angularAccel * dt
+		}
+
+		// Re-evaluate turn direction if getting close
+		if math.Abs(angleDiff) < math.Pi/2 {
+			newDir := g.calculateFastestRetrogradeTurn()
+			if newDir != 0 && newDir != g.retrogradeTurnDir {
+				g.retrogradeTurnDir = newDir
+			}
+		}
+	} else {
+		// Aligned within 20 degrees - fire main engine!
+		// Dampen angular velocity to stay aligned
+		if math.Abs(g.shipAngularVel) > 0.5 {
+			g.dampingAngularSpeed = true
+			if g.shipAngularVel > 0 {
+				g.shipAngularVel -= angularDampingAccel * dt
+			} else {
+				g.shipAngularVel += angularDampingAccel * dt
+			}
+			g.turningThisFrame = true
+			if g.shipAngularVel > 0 {
+				g.turnDirection = -1
+			} else {
+				g.turnDirection = 1
+			}
+		}
+
+		// Fire main engine
+		forwardX := math.Sin(g.shipAngle)
+		forwardY := -math.Cos(g.shipAngle)
+		g.shipVel.x += forwardX * thrustAccel * dt
+		g.shipVel.y += forwardY * thrustAccel * dt
+		g.thrustThisFrame = true
+	}
 }
 
 func (g *Game) updateStars(dt float64) {
@@ -182,8 +328,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.drawShip(screen)
 
-	hud := fmt.Sprintf("Arrow keys / WASD to steer | Speed: %0.1f | Angular Speed: %0.2f rad/s | Health: %0.0f", 
-		math.Hypot(g.shipVel.x, g.shipVel.y), g.shipAngularVel, g.health)
+	retroStatus := ""
+	if g.retrogradeMode {
+		speed := math.Hypot(g.shipVel.x, g.shipVel.y)
+		targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
+		angleDiff := math.Abs(normalizeAngle(targetAngle-g.shipAngle)) * 180 / math.Pi
+		if angleDiff > 20 {
+			retroStatus = fmt.Sprintf(" | RETROGRADE: TURNING (%.0f° off)", angleDiff)
+		} else {
+			retroStatus = fmt.Sprintf(" | RETROGRADE: BURNING (speed: %.1f)", speed)
+		}
+	}
+	hud := fmt.Sprintf("S: Retrograde Burn | Speed: %0.1f | Angular: %0.2f rad/s%s",
+		math.Hypot(g.shipVel.x, g.shipVel.y), g.shipAngularVel, retroStatus)
 	ebitenutil.DebugPrint(screen, hud)
 }
 
@@ -235,7 +392,7 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 	if g.turningThisFrame {
 		if g.turnDirection > 0 {
 			// Turning right - show flame on right side
-			g.fireThruster(screen, true, shipCenterX, shipCenterY)  // right
+			g.fireThruster(screen, true, shipCenterX, shipCenterY) // right
 		} else {
 			// Turning left - show flame on left side
 			g.fireThruster(screen, false, shipCenterX, shipCenterY) // left
@@ -289,7 +446,7 @@ func (g *Game) fireThruster(screen *ebiten.Image, right bool, centerX, centerY f
 		outwardDirX = 1.0 // right
 	}
 	outwardDir := rotatePoint(vec2{outwardDirX, 0}, g.shipAngle)
-	
+
 	flameDir := vec2{
 		x: flameAnchor.x + outwardDir.x*sideFlameLength,
 		y: flameAnchor.y + outwardDir.y*sideFlameLength,
