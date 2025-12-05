@@ -221,7 +221,8 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 
 // NPC behavior constants
 const (
-	npcDesiredDist = 80.0 // standoff distance from player
+	npcDesiredDist   = 80.0 // standoff distance from player
+	npcReacquireDist = 600.0
 )
 
 // updateNPC uses the same physics as the player - can only turn and thrust forward
@@ -264,10 +265,21 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	// Should we thrust? Only if we're too far away
 	wantToThrust := dist > npcDesiredDist && !wantToBrake
 
+	// If we've lost the player (far away or moving away fast), ignore brake logic
+	// and switch to a pure chase/reacquire mode.
+	reacquire := dist > npcReacquireDist || (closingSpeed < -10 && dist > npcDesiredDist*3)
+	if reacquire {
+		wantToBrake = false
+		wantToThrust = true
+	}
+
 	// === Calculate target heading ===
 
 	var targetAngle float64
-	if wantToBrake {
+	if reacquire {
+		// Just point at the player to regain contact.
+		targetAngle = math.Atan2(dx, -dy)
+	} else if wantToBrake {
 		// Point opposite to our relative velocity (retrograde relative to player)
 		if relSpeed > 5 {
 			targetAngle = math.Atan2(-relVelX, relVelY)
@@ -335,6 +347,10 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	// === THRUST INPUT (like player pressing W) ===
 
 	alignThreshold := math.Pi / 4 // 45 degrees - only thrust when reasonably aligned
+	if reacquire {
+		// Allow thrust while roughly pointed in the right half-plane during chase.
+		alignThreshold = math.Pi * 0.55
+	}
 	forwardX := math.Sin(npc.angle)
 	forwardY := -math.Cos(npc.angle)
 

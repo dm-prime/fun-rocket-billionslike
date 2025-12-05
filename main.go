@@ -653,12 +653,20 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 		}
 	}
 
-	// Draw dots and labels with stacking
+	// Draw dots, labels, and indicators with stacking
 	for _, clust := range clusters {
 		if len(clust.blips) == 1 {
 			// Single blip, draw normally
 			b := clust.blips[0]
-			drawCircle(screen, center.x+b.rx, center.y+b.ry, 3, b.blipColor)
+			baseX := center.x + b.rx
+			baseY := center.y + b.ry
+			enemy := &g.ships[b.shipIndex]
+
+			// Draw indicators first (so they appear behind the dot)
+			g.drawRadarIndicators(screen, enemy, baseX, baseY, b.blipColor, player, scale)
+
+			// Draw dot
+			drawCircle(screen, baseX, baseY, 3, b.blipColor)
 			ebitenutil.DebugPrintAt(screen, b.label, int(b.labelX), int(b.labelY))
 		} else {
 			// Multiple blips, stack them vertically
@@ -679,6 +687,12 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 				// For stacked dots, keep X at cluster center, adjust Y
 				dotX := center.x + clust.centerX
+				enemy := &g.ships[b.shipIndex]
+
+				// Draw indicators first (so they appear behind the dot)
+				g.drawRadarIndicators(screen, enemy, dotX, dotY, b.blipColor, player, scale)
+
+				// Draw dot
 				drawCircle(screen, dotX, dotY, 3, b.blipColor)
 
 				// Stack labels vertically as well, positioned relative to stacked dot
@@ -712,6 +726,54 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				ebitenutil.DebugPrintAt(screen, b.label, int(labelX), int(labelY))
 			}
 		}
+	}
+}
+
+// drawRadarIndicators draws facing direction, engine burn, and speed vector indicators for an enemy on the radar
+func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64) {
+	// Facing direction triangle (smaller version of ship triangle)
+	renderAngle := enemy.angle - player.angle
+	// Triangle points in local space (nose up) - scaled down for radar
+	nose := rotatePoint(vec2{0, -6}, renderAngle)
+	left := rotatePoint(vec2{-4, 4}, renderAngle)
+	right := rotatePoint(vec2{4, 4}, renderAngle)
+
+	nose.x += baseX
+	nose.y += baseY
+	left.x += baseX
+	left.y += baseY
+	right.x += baseX
+	right.y += baseY
+
+	ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, blipColor)
+	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, blipColor)
+	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, blipColor)
+
+	// Calculate facing direction for engine burn indicator
+	facingDir := rotatePoint(vec2{math.Sin(enemy.angle), -math.Cos(enemy.angle)}, -player.angle)
+
+	// Main engine burn indicator (short flame behind when thrusting)
+	if enemy.thrustThisFrame {
+		flameLen := 8.0
+		flameColor := color.NRGBA{R: 255, G: 180, B: 60, A: 255}
+		ebitenutil.DrawLine(screen, baseX, baseY, baseX-facingDir.x*flameLen, baseY-facingDir.y*flameLen, flameColor)
+	}
+
+	// Speed vector (relative to player velocity)
+	velRel := vec2{enemy.vel.x - player.vel.x, enemy.vel.y - player.vel.y}
+	velRender := rotatePoint(velRel, -player.angle)
+	if l := math.Hypot(velRender.x, velRender.y); l > 0.01 {
+		velScale := scale * 0.18 // tune visibility
+		vx := velRender.x * velScale
+		vy := velRender.y * velScale
+		// Clamp speed vector length to avoid clutter
+		if mag := math.Hypot(vx, vy); mag > radarRadius*0.45 {
+			f := (radarRadius * 0.45) / mag
+			vx *= f
+			vy *= f
+		}
+		velColor := color.NRGBA{R: 120, G: 220, B: 255, A: 220}
+		ebitenutil.DrawLine(screen, baseX, baseY, baseX+vx, baseY+vy, velColor)
 	}
 }
 
