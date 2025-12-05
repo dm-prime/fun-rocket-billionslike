@@ -206,12 +206,15 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 		}
 	}
 
-	// Only burn when closely aligned to retrograde to avoid thrusting off-axis.
-	if math.Abs(angleDiff) <= retroBurnAlignWindow {
-		forwardX := math.Sin(ship.angle)
-		forwardY := -math.Cos(ship.angle)
-		ship.vel.x += forwardX * thrustAccel * dt
-		ship.vel.y += forwardY * thrustAccel * dt
+	// Always apply side thruster acceleration directly against current velocity
+	// regardless of ship orientation
+	if speed > 0.01 { // Avoid division by zero
+		// Normalize velocity vector to get direction
+		velDirX := ship.vel.x / speed
+		velDirY := ship.vel.y / speed
+		// Apply acceleration opposite to velocity (retrograde direction)
+		ship.vel.x -= velDirX * sideThrustAccel * dt
+		ship.vel.y -= velDirY * sideThrustAccel * dt
 		ship.thrustThisFrame = true
 	}
 }

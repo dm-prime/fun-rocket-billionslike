@@ -15,10 +15,11 @@ import (
 const (
 	screenWidth              = 900
 	screenHeight             = 600
-	angularAccel             = math.Pi * 6 // radians per second^2
+	angularAccel             = math.Pi * 3 // radians per second^2
 	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
 	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
 	thrustAccel              = 230.0       // pixels per second^2
+	sideThrustAccel          = 77.0        // pixels per second^2 (side thruster acceleration)
 	dustCount                = 70
 	dustBaseSpeed            = 20.0
 	retroAlignTolerance      = 20 * math.Pi / 180 // radians
