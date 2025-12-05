@@ -49,18 +49,21 @@ var (
 
 // Ship geometry constants
 const (
-	shipNoseOffsetY     = -18.0
-	shipLeftOffsetX     = -12.0
-	shipLeftOffsetY     = 12.0
-	shipRightOffsetX    = 12.0
-	shipRightOffsetY    = 12.0
-	shipBackOffsetY     = 12.0
-	flameBaseLength     = 28.0
-	flameVarLength      = 8.0
-	sideFlameBaseLen    = 15.0
-	sideFlameVarLen     = 5.0
-	sideThrusterX       = 10.0
-	velocityVectorScale = 0.1
+	shipNoseOffsetY             = -18.0
+	shipLeftOffsetX             = -12.0
+	shipLeftOffsetY             = 12.0
+	shipRightOffsetX            = 12.0
+	shipRightOffsetY            = 12.0
+	shipBackOffsetY             = 12.0
+	flameBaseLength             = 28.0
+	flameVarLength              = 8.0
+	sideFlameBaseLen            = 15.0
+	sideFlameVarLen             = 5.0
+	sideThrusterX               = 10.0
+	velocityVectorScale         = 0.1
+	predictiveTrailDuration     = 2.0  // seconds into future to predict
+	predictiveTrailSegmentCount = 10   // number of segments in the trail
+	predictiveTrailUpdateRate   = 0.05 // seconds per segment
 )
 
 // Radar geometry constants
