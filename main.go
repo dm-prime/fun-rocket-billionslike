@@ -329,6 +329,58 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 	minY := indicatorMargin
 	maxY := float64(screenHeight) - indicatorMargin
 
+	type cornerStat struct {
+		count   int
+		minDist float64
+		dir     vec2
+		pos     vec2
+	}
+	corners := map[string]*cornerStat{}
+
+	drawIndicator := func(pos vec2, dir vec2, dist float64, count int) {
+		tipX := pos.x + dir.x*indicatorArrowLen*0.6
+		tipY := pos.y + dir.y*indicatorArrowLen*0.6
+		tailX := pos.x - dir.x*indicatorArrowLen*0.4
+		tailY := pos.y - dir.y*indicatorArrowLen*0.4
+		ebitenutil.DrawLine(screen, tailX, tailY, tipX, tipY, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+
+		wingAngle := math.Pi / 6
+		sinA := math.Sin(wingAngle)
+		cosA := math.Cos(wingAngle)
+		leftWing := vec2{
+			x: dir.x*cosA - dir.y*sinA,
+			y: dir.x*sinA + dir.y*cosA,
+		}
+		rightWing := vec2{
+			x: dir.x*cosA + dir.y*sinA,
+			y: -dir.x*sinA + dir.y*cosA,
+		}
+		wingLen := indicatorArrowLen * 0.5
+		ebitenutil.DrawLine(screen, tipX, tipY, tipX-leftWing.x*wingLen, tipY-leftWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+		ebitenutil.DrawLine(screen, tipX, tipY, tipX-rightWing.x*wingLen, tipY-rightWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+
+		label := fmt.Sprintf("%.0f", dist)
+		if count > 1 {
+			label = fmt.Sprintf("%.0f (x%d)", dist, count)
+		}
+		labelX := pos.x + 8
+		labelY := pos.y - 8
+		maxLabelX := float64(screenWidth) - 64 // leave more room for multiplier text
+		if labelX > maxLabelX {
+			labelX = maxLabelX
+		}
+		if labelX < 4 {
+			labelX = 4
+		}
+		if labelY < 4 {
+			labelY = 4
+		}
+		if labelY > float64(screenHeight)-12 {
+			labelY = float64(screenHeight) - 12
+		}
+		ebitenutil.DebugPrintAt(screen, label, int(labelX), int(labelY))
+	}
+
 	for i := range g.ships {
 		if i == g.playerIndex {
 			continue
@@ -357,47 +409,32 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 		dirX := dx / dist
 		dirY := dy / dist
 
-		// Arrow body
-		tipX := clampedX + dirX*indicatorArrowLen*0.6
-		tipY := clampedY + dirY*indicatorArrowLen*0.6
-		tailX := clampedX - dirX*indicatorArrowLen*0.4
-		tailY := clampedY - dirY*indicatorArrowLen*0.4
-		ebitenutil.DrawLine(screen, tailX, tailY, tipX, tipY, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+		isCorner := (clampedX == minX || clampedX == maxX) && (clampedY == minY || clampedY == maxY)
+		if isCorner {
+			key := fmt.Sprintf("%t-%t", clampedX == minX, clampedY == minY) // left/right - top/bottom
+			if stat, ok := corners[key]; ok {
+				stat.count++
+				if dist < stat.minDist {
+					stat.minDist = dist
+					stat.dir = vec2{dirX, dirY}
+					stat.pos = vec2{clampedX, clampedY}
+				}
+			} else {
+				corners[key] = &cornerStat{
+					count:   1,
+					minDist: dist,
+					dir:     vec2{dirX, dirY},
+					pos:     vec2{clampedX, clampedY},
+				}
+			}
+			continue
+		}
 
-		// Arrow wings
-		wingAngle := math.Pi / 6
-		sinA := math.Sin(wingAngle)
-		cosA := math.Cos(wingAngle)
-		leftWing := vec2{
-			x: dirX*cosA - dirY*sinA,
-			y: dirX*sinA + dirY*cosA,
-		}
-		rightWing := vec2{
-			x: dirX*cosA + dirY*sinA,
-			y: -dirX*sinA + dirY*cosA,
-		}
-		wingLen := indicatorArrowLen * 0.5
-		ebitenutil.DrawLine(screen, tipX, tipY, tipX-leftWing.x*wingLen, tipY-leftWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
-		ebitenutil.DrawLine(screen, tipX, tipY, tipX-rightWing.x*wingLen, tipY-rightWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+		drawIndicator(vec2{clampedX, clampedY}, vec2{dirX, dirY}, dist, 1)
+	}
 
-		// Distance label
-		label := fmt.Sprintf("%.0f", dist)
-		labelX := clampedX + 8
-		labelY := clampedY - 8
-		maxLabelX := float64(screenWidth) - 48 // keep text inside bounds
-		if labelX > maxLabelX {
-			labelX = maxLabelX
-		}
-		if labelX < 4 {
-			labelX = 4
-		}
-		if labelY < 4 {
-			labelY = 4
-		}
-		if labelY > float64(screenHeight)-12 {
-			labelY = float64(screenHeight) - 12
-		}
-		ebitenutil.DebugPrintAt(screen, label, int(labelX), int(labelY))
+	for _, stat := range corners {
+		drawIndicator(stat.pos, stat.dir, stat.minDist, stat.count)
 	}
 }
 
