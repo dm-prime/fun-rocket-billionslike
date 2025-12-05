@@ -12,9 +12,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
+var (
+	screenWidth  int
+	screenHeight int
+)
+
 const (
-	screenWidth              = 900
-	screenHeight             = 600
 	angularAccel             = math.Pi * 3 // radians per second^2
 	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
 	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
@@ -83,6 +86,7 @@ type Game struct {
 	alliances        map[string]map[string]bool
 	radarTrails      map[int][]RadarTrailPoint // ship index -> trail points
 	radarTrailTimers map[int]float64           // ship index -> time since last trail point
+	initialized      bool                      // track if screen size has been initialized
 }
 
 func newGame() *Game {
@@ -98,27 +102,27 @@ func newGame() *Game {
 	// Create a few ships; index 0 is player, others are passive demo ships.
 	g.ships = []Ship{
 		{
-			pos:      vec2{screenWidth * 0.5, screenHeight * 0.5},
+			pos:      vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5},
 			health:   100,
 			isPlayer: true,
 			faction:  "Union",
 		},
 		{
-			pos:     vec2{screenWidth*0.5 + 120, screenHeight*0.5 - 60},
+			pos:     vec2{float64(screenWidth)*0.5 + 120, float64(screenHeight)*0.5 - 60},
 			angle:   math.Pi * 0.25,
 			vel:     vec2{30, -10},
 			health:  100,
 			faction: "Raiders",
 		},
 		{
-			pos:     vec2{screenWidth*0.5 - 160, screenHeight*0.5 + 90},
+			pos:     vec2{float64(screenWidth)*0.5 - 160, float64(screenHeight)*0.5 + 90},
 			angle:   -math.Pi * 0.5,
 			vel:     vec2{-20, 25},
 			health:  100,
 			faction: "Raiders",
 		},
 		{
-			pos:     vec2{screenWidth*0.5 + 220, screenHeight*0.5 + 40},
+			pos:     vec2{float64(screenWidth)*0.5 + 220, float64(screenHeight)*0.5 + 40},
 			angle:   math.Pi * 0.15,
 			vel:     vec2{15, 5},
 			health:  100,
@@ -128,7 +132,7 @@ func newGame() *Game {
 	g.playerIndex = 0
 
 	// Seed dust in a square around the player so rotated views stay filled.
-	initialSpan := math.Hypot(screenWidth, screenHeight) * 1.5
+	initialSpan := math.Hypot(float64(screenWidth), float64(screenHeight)) * 1.5
 	halfSpan := initialSpan * 0.5
 	for i := range g.dust {
 		g.dust[i] = dust{
@@ -166,7 +170,7 @@ func (g *Game) Update() error {
 
 func (g *Game) updateDust(dt float64, player *Ship) {
 	// Move dust relative to ship velocity (opposite direction for parallax effect)
-	span := math.Hypot(screenWidth, screenHeight) * 1.5 // square torus sized by diagonal
+	span := math.Hypot(float64(screenWidth), float64(screenHeight)) * 1.5 // square torus sized by diagonal
 	half := span * 0.5
 	for i := range g.dust {
 		// Dust moves opposite to ship movement, with individual speed variance
@@ -931,6 +935,12 @@ func (g *Game) fireThruster(screen *ebiten.Image, ship *Ship, right bool, center
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	// Capture screen size on first layout call
+	if !g.initialized && outsideWidth > 0 && outsideHeight > 0 {
+		screenWidth = outsideWidth
+		screenHeight = outsideHeight
+		g.initialized = true
+	}
 	return screenWidth, screenHeight
 }
 
@@ -955,6 +965,13 @@ func drawCircle(dst *ebiten.Image, cx, cy, radius float64, clr color.Color) {
 }
 
 func main() {
+	// Get current monitor size
+	ebiten.SetFullscreen(true)
+	monitorWidth, monitorHeight := ebiten.ScreenSizeInFullscreen()
+
+	screenWidth = monitorWidth
+	screenHeight = monitorHeight
+
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Pocket Rocket - Ebiten Demo")
 	ebiten.SetTPS(60)
