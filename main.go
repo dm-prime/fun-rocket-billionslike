@@ -294,6 +294,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 	// Radar backdrop and crosshair
 	drawCircle(screen, center.x, center.y, radarRadius+4, color.NRGBA{R: 10, G: 16, B: 32, A: 230})
+	drawCircle(screen, center.x, center.y, radarRadius, color.NRGBA{R: 24, G: 48, B: 96, A: 255}) // outer ring
 	ebitenutil.DrawLine(screen, center.x-radarRadius, center.y, center.x+radarRadius, center.y, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
 	ebitenutil.DrawLine(screen, center.x, center.y-radarRadius, center.x, center.y+radarRadius, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
 
@@ -317,21 +318,49 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 		dy := enemy.pos.y - player.pos.y
 
 		dist := math.Hypot(dx, dy)
-		if dist > radarRange {
-			continue // too far to display
-		}
 
 		rx := dx * scale
 		ry := dy * scale
 
-		// Clamp to radar edge so distant targets sit on the rim
-		if edgeDist := math.Hypot(rx, ry); edgeDist > radarRadius-4 {
-			f := (radarRadius - 4) / edgeDist
-			rx *= f
-			ry *= f
+		blipColor := g.colorForFaction(enemy.faction)
+		isOffRadar := dist > radarRange
+		if isOffRadar {
+			// Place on the edge of the radar circle and show distance
+			dirX := dx / dist
+			dirY := dy / dist
+			maxR := radarRadius - 5
+			rx = dirX * maxR
+			ry = dirY * maxR
+
+			label := fmt.Sprintf("%.0f", dist)
+			labelX := center.x + rx + dirX*10
+			labelY := center.y + ry + dirY*10
+			minX := center.x - radarRadius + 6
+			maxX := center.x + radarRadius - 32
+			minY := center.y - radarRadius + 6
+			maxY := center.y + radarRadius - 12
+			if labelX < minX {
+				labelX = minX
+			}
+			if labelX > maxX {
+				labelX = maxX
+			}
+			if labelY < minY {
+				labelY = minY
+			}
+			if labelY > maxY {
+				labelY = maxY
+			}
+			ebitenutil.DebugPrintAt(screen, label, int(labelX), int(labelY))
+		} else {
+			// Clamp to radar edge so distant targets sit on the rim
+			if edgeDist := math.Hypot(rx, ry); edgeDist > radarRadius-4 {
+				f := (radarRadius - 4) / edgeDist
+				rx *= f
+				ry *= f
+			}
 		}
 
-		blipColor := g.colorForFaction(enemy.faction)
 		drawCircle(screen, center.x+rx, center.y+ry, 3, blipColor)
 	}
 }
