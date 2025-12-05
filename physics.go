@@ -221,9 +221,9 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 
 // NPC behavior constants
 const (
-	npcDesiredDist      = 100.0       // standoff distance from player
+	npcDesiredDist      = 80.0        // standoff distance from player
 	npcInterceptLead    = 1.5         // seconds to lead target prediction
-	npcThrustFactor     = 0.85        // NPC thrust multiplier (can almost match player)
+	npcThrustFactor     = 1.0         // NPC thrust multiplier (match player)
 	npcAlignThreshold   = 0.03        // radians, angle considered "aligned"
 	npcBrakeAlignThresh = math.Pi / 6 // must be within this to brake effectively
 )
@@ -287,10 +287,10 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	shouldThrust := false
 	shouldMatchVel := false
 
-	if dist < npcDesiredDist*1.2 && relSpeed < 50 {
-		// Close and low relative speed - match player velocity (formation keep)
+	if dist < npcDesiredDist*2.5 {
+		// Close enough - match player velocity (formation keep)
 		shouldMatchVel = true
-	} else if closingRate > 20 && stoppingDist > distToTarget*0.7 {
+	} else if closingRate > 30 && stoppingDist > distToTarget*0.9 {
 		// We're closing AND would overshoot - brake
 		// The 0.7 factor gives some margin for the turn time
 		shouldBrake = true
@@ -391,20 +391,31 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	forwardY := -math.Cos(npc.angle)
 
 	if shouldMatchVel {
-		// Velocity matching mode - smoothly match player velocity
-		velDiffX := player.vel.x - npc.vel.x
-		velDiffY := player.vel.y - npc.vel.y
+		// Velocity matching + position correction
+		// Target velocity = player velocity + correction toward desired position
+		// Only apply correction if outside desired distance
+		correctionStrength := 1.0
+		corrX, corrY := 0.0, 0.0
+		if dist > npcDesiredDist {
+			// Pull toward desired distance, not all the way to player
+			overshoot := dist - npcDesiredDist
+			corrX = (dx / dist) * overshoot * correctionStrength
+			corrY = (dy / dist) * overshoot * correctionStrength
+		}
+		targetVelX := player.vel.x + corrX
+		targetVelY := player.vel.y + corrY
+
+		velDiffX := targetVelX - npc.vel.x
+		velDiffY := targetVelY - npc.vel.y
 		velDiffMag := math.Hypot(velDiffX, velDiffY)
 
 		if velDiffMag > 1 {
-			// Apply thrust in direction of velocity difference, capped by our thrust
-			maxDelta := brakingAccel * dt
+			// Use full thrust for matching
+			maxDelta := thrustAccel * dt
 			if velDiffMag < maxDelta {
-				// Can reach target velocity this frame
-				npc.vel.x = player.vel.x
-				npc.vel.y = player.vel.y
+				npc.vel.x = targetVelX
+				npc.vel.y = targetVelY
 			} else {
-				// Apply thrust toward matching velocity
 				npc.vel.x += (velDiffX / velDiffMag) * maxDelta
 				npc.vel.y += (velDiffY / velDiffMag) * maxDelta
 			}

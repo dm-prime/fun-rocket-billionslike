@@ -31,9 +31,11 @@ const (
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
 	indicatorArrowLen        = 18.0
-	radarTrailMaxAge         = 3.0 // seconds
-	radarTrailUpdateInterval = 0.1 // seconds between trail points
-	radarTrailMaxPoints      = 30  // maximum trail points per ship
+	radarTrailMaxAge         = 3.0  // seconds
+	radarTrailUpdateInterval = 0.1  // seconds between trail points
+	radarTrailMaxPoints      = 30   // maximum trail points per ship
+	radarStackThreshold      = 10.0 // pixels - dots closer than this will be stacked
+	radarStackSpacing        = 8.0  // pixels - vertical spacing between stacked dots
 )
 
 type vec2 struct {
@@ -448,6 +450,19 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 		}
 	}
 
+	// Collect all radar blip data
+	type radarBlip struct {
+		shipIndex      int
+		rx, ry         float64 // radar coordinates
+		dist           float64
+		blipColor      color.NRGBA
+		isOffRadar     bool
+		dirX, dirY     float64 // direction for off-radar blips
+		labelX, labelY float64 // label position
+		label          string
+	}
+
+	blips := make([]radarBlip, 0)
 	for i := range g.ships {
 		if i == g.playerIndex {
 			continue
@@ -466,17 +481,20 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 		blipColor := g.colorForFaction(enemy.faction)
 		isOffRadar := dist > radarRange
+		var labelX, labelY, dirX, dirY float64
+		var label string
+
 		if isOffRadar {
 			// Place on the edge of the radar circle and show distance
-			dirX := rotated.x / dist
-			dirY := rotated.y / dist
+			dirX = rotated.x / dist
+			dirY = rotated.y / dist
 			maxR := radarRadius - 5
 			rx = dirX * maxR
 			ry = dirY * maxR
 
-			label := fmt.Sprintf("%.0f", dist)
-			labelX := center.x + rx + dirX*10
-			labelY := center.y + ry + dirY*10
+			label = fmt.Sprintf("%.0f", dist)
+			labelX = center.x + rx + dirX*10
+			labelY = center.y + ry + dirY*10
 			minX := center.x - radarRadius + 6
 			maxX := center.x + radarRadius - 32
 			minY := center.y - radarRadius + 6
@@ -493,7 +511,6 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			if labelY > maxY {
 				labelY = maxY
 			}
-			ebitenutil.DebugPrintAt(screen, label, int(labelX), int(labelY))
 		} else {
 			// Clamp to radar edge so distant targets sit on the rim
 			if edgeDist := math.Hypot(rx, ry); edgeDist > radarRadius-4 {
@@ -501,12 +518,81 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				rx *= f
 				ry *= f
 			}
+			// For on-radar blips, show distance label near the dot
+			label = fmt.Sprintf("%.0f", dist)
+			labelX = center.x + rx + 8
+			labelY = center.y + ry - 8
 		}
 
-		// Draw fading trail
+		blips = append(blips, radarBlip{
+			shipIndex:  i,
+			rx:         rx,
+			ry:         ry,
+			dist:       dist,
+			blipColor:  blipColor,
+			isOffRadar: isOffRadar,
+			dirX:       dirX,
+			dirY:       dirY,
+			labelX:     labelX,
+			labelY:     labelY,
+			label:      label,
+		})
+	}
+
+	// Group blips that are close together
+	type cluster struct {
+		blips            []*radarBlip
+		centerX, centerY float64
+	}
+	clusters := make([]cluster, 0)
+	assigned := make(map[int]bool)
+
+	for i := range blips {
+		if assigned[i] {
+			continue
+		}
+		// Start a new cluster with this blip
+		clust := cluster{
+			blips:   []*radarBlip{&blips[i]},
+			centerX: blips[i].rx,
+			centerY: blips[i].ry,
+		}
+		assigned[i] = true
+
+		// Find all blips close to this one
+		for j := range blips {
+			if assigned[j] || i == j {
+				continue
+			}
+			dist := math.Hypot(blips[i].rx-blips[j].rx, blips[i].ry-blips[j].ry)
+			if dist < radarStackThreshold {
+				clust.blips = append(clust.blips, &blips[j])
+				assigned[j] = true
+			}
+		}
+
+		// Calculate cluster center
+		if len(clust.blips) > 1 {
+			sumX, sumY := 0.0, 0.0
+			for _, b := range clust.blips {
+				sumX += b.rx
+				sumY += b.ry
+			}
+			clust.centerX = sumX / float64(len(clust.blips))
+			clust.centerY = sumY / float64(len(clust.blips))
+		}
+
+		clusters = append(clusters, clust)
+	}
+
+	// Draw trails first (before dots)
+	for i := range g.ships {
+		if i == g.playerIndex {
+			continue
+		}
 		trail := g.radarTrails[i]
 		if len(trail) > 1 {
-			baseColor := g.colorForFaction(enemy.faction)
+			baseColor := g.colorForFaction(g.ships[i].faction)
 			for j := 0; j < len(trail)-1; j++ {
 				p1 := trail[j]
 				p2 := trail[j+1]
@@ -565,8 +651,67 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				)
 			}
 		}
+	}
 
-		drawCircle(screen, center.x+rx, center.y+ry, 3, blipColor)
+	// Draw dots and labels with stacking
+	for _, clust := range clusters {
+		if len(clust.blips) == 1 {
+			// Single blip, draw normally
+			b := clust.blips[0]
+			drawCircle(screen, center.x+b.rx, center.y+b.ry, 3, b.blipColor)
+			ebitenutil.DebugPrintAt(screen, b.label, int(b.labelX), int(b.labelY))
+		} else {
+			// Multiple blips, stack them vertically
+			// Sort by distance (closest first, so it's at the bottom of the stack)
+			for i := 0; i < len(clust.blips)-1; i++ {
+				for j := i + 1; j < len(clust.blips); j++ {
+					if clust.blips[i].dist > clust.blips[j].dist {
+						clust.blips[i], clust.blips[j] = clust.blips[j], clust.blips[i]
+					}
+				}
+			}
+
+			// Calculate vertical offset for each blip
+			stackStartY := clust.centerY - float64(len(clust.blips)-1)*radarStackSpacing*0.5
+			for idx, b := range clust.blips {
+				offsetY := float64(idx) * radarStackSpacing
+				dotY := center.y + stackStartY + offsetY
+
+				// For stacked dots, keep X at cluster center, adjust Y
+				dotX := center.x + clust.centerX
+				drawCircle(screen, dotX, dotY, 3, b.blipColor)
+
+				// Stack labels vertically as well, positioned relative to stacked dot
+				var labelX, labelY float64
+				if b.isOffRadar {
+					// For off-radar blips, position label outward from the stacked dot
+					labelX = dotX + b.dirX*10
+					labelY = dotY + b.dirY*10
+					// Clamp to radar bounds
+					minX := center.x - radarRadius + 6
+					maxX := center.x + radarRadius - 32
+					minY := center.y - radarRadius + 6
+					maxY := center.y + radarRadius - 12
+					if labelX < minX {
+						labelX = minX
+					}
+					if labelX > maxX {
+						labelX = maxX
+					}
+					if labelY < minY {
+						labelY = minY
+					}
+					if labelY > maxY {
+						labelY = maxY
+					}
+				} else {
+					// For on-radar blips, position label to the right and above the dot
+					labelX = dotX + 8
+					labelY = dotY - 8
+				}
+				ebitenutil.DebugPrintAt(screen, b.label, int(labelX), int(labelY))
+			}
+		}
 	}
 }
 
