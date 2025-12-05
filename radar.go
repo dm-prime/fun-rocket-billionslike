@@ -62,7 +62,6 @@ func (g *Game) drawRadarTrail(screen *ebiten.Image, trail []RadarTrailPoint, tra
 			screen,
 			center.x+rx1,
 			center.y+ry1,
-			center.y+ry1,
 			center.x+rx2,
 			center.y+ry2,
 			fadedColor,

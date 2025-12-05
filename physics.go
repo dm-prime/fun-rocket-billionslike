@@ -221,8 +221,12 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 
 // NPC behavior constants
 const (
-	npcDesiredDist   = 80.0 // standoff distance from player
-	npcReacquireDist = 600.0
+	npcDesiredDist     = 80.0 // standoff distance from player
+	npcReacquireDist   = 600.0
+	npcThrustThreshold = 0.3   // minimum velocity change needed to justify thrusting
+	npcCoastThreshold  = 5.0   // if speed is below this, always try to accelerate
+	npcMaxSpeed        = 200.0 // maximum speed NPCs should maintain
+	npcThrustCooldown  = 0.3   // seconds between thrust bursts
 )
 
 // updateNPC uses the same physics as the player - can only turn and thrust forward
@@ -345,22 +349,70 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	npc.angle += npc.angularVel * dt
 
 	// === THRUST INPUT (like player pressing W) ===
+	// Only thrust when it makes sense - not constantly
 
-	alignThreshold := math.Pi / 4 // 45 degrees - only thrust when reasonably aligned
-	if reacquire {
-		// Allow thrust while roughly pointed in the right half-plane during chase.
-		alignThreshold = math.Pi * 0.55
-	}
 	forwardX := math.Sin(npc.angle)
 	forwardY := -math.Cos(npc.angle)
+	currentSpeed := math.Hypot(npc.vel.x, npc.vel.y)
 
-	if wantToBrake && math.Abs(angleDiff) < alignThreshold {
-		// Aligned with retrograde - thrust to slow down
-		npc.vel.x += forwardX * thrustAccel * dt
-		npc.vel.y += forwardY * thrustAccel * dt
-		npc.thrustThisFrame = true
-	} else if wantToThrust && math.Abs(angleDiff) < alignThreshold {
-		// Aligned with target - thrust to pursue
+	// Calculate desired velocity direction
+	var desiredVelX, desiredVelY float64
+	if wantToBrake {
+		// When braking, we want to reduce speed relative to player
+		// Desired velocity is opposite to relative velocity
+		desiredVelX = player.vel.x - relVelX*0.5
+		desiredVelY = player.vel.y - relVelY*0.5
+	} else if wantToThrust {
+		// When thrusting, calculate desired velocity toward target
+		// Use a reasonable speed based on distance
+		desiredSpeed := clamp(dist*0.3, 50.0, npcMaxSpeed)
+		desiredVelX = forwardX * desiredSpeed
+		desiredVelY = forwardY * desiredSpeed
+	} else {
+		// Coasting - maintain current velocity (no change needed)
+		desiredVelX = npc.vel.x
+		desiredVelY = npc.vel.y
+	}
+
+	// Calculate how much our velocity needs to change
+	velChangeNeededX := desiredVelX - npc.vel.x
+	velChangeNeededY := desiredVelY - npc.vel.y
+	velChangeMagnitude := math.Hypot(velChangeNeededX, velChangeNeededY)
+
+	// Only thrust if:
+	// 1. We're reasonably aligned with the desired direction (within 30 degrees)
+	// 2. We need a meaningful velocity change
+	// 3. We're not already going too fast (unless braking)
+	alignThreshold := math.Pi / 6 // 30 degrees - tighter threshold
+	isAligned := math.Abs(angleDiff) < alignThreshold
+
+	shouldThrust := false
+	if wantToBrake && isAligned && velChangeMagnitude > npcThrustThreshold*2 {
+		// Braking: brake if aligned and need significant slowdown
+		shouldThrust = true
+	} else if wantToThrust && isAligned {
+		// Thrusting: only if we need velocity change AND not going too fast
+		if currentSpeed < npcMaxSpeed && velChangeMagnitude > npcThrustThreshold {
+			shouldThrust = true
+		} else if currentSpeed < npcCoastThreshold {
+			// Always accelerate if we're going very slowly
+			shouldThrust = true
+		}
+		// Don't thrust if we're already close to desired speed
+		currentVelDirX := npc.vel.x
+		currentVelDirY := npc.vel.y
+		if currentSpeed > 0.1 {
+			currentVelDirX /= currentSpeed
+			currentVelDirY /= currentSpeed
+		}
+		velAlignment := currentVelDirX*forwardX + currentVelDirY*forwardY
+		if velAlignment > 0.95 && currentSpeed > npcMaxSpeed*0.8 {
+			// Already going fast in the right direction - coast
+			shouldThrust = false
+		}
+	}
+
+	if shouldThrust {
 		npc.vel.x += forwardX * thrustAccel * dt
 		npc.vel.y += forwardY * thrustAccel * dt
 		npc.thrustThisFrame = true
