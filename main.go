@@ -87,6 +87,7 @@ type Game struct {
 	radarTrails      map[int][]RadarTrailPoint // ship index -> trail points
 	radarTrailTimers map[int]float64           // ship index -> time since last trail point
 	initialized      bool                      // track if screen size has been initialized
+	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
 }
 
 func newGame() *Game {
@@ -150,6 +151,33 @@ func newGame() *Game {
 
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
+
+	// Handle Alt+Enter to toggle fullscreen
+	altPressed := ebiten.IsKeyPressed(ebiten.KeyAlt) || ebiten.IsKeyPressed(ebiten.KeyAltLeft) || ebiten.IsKeyPressed(ebiten.KeyAltRight)
+	enterPressed := ebiten.IsKeyPressed(ebiten.KeyEnter)
+	altEnterPressed := altPressed && enterPressed
+
+	if altEnterPressed && !g.prevAltEnter {
+		// Toggle fullscreen
+		isCurrentlyFullscreen := ebiten.IsFullscreen()
+		ebiten.SetFullscreen(!isCurrentlyFullscreen)
+
+		// Update screen size when toggling
+		if !isCurrentlyFullscreen {
+			// Going to fullscreen - use monitor size
+			monitorWidth, monitorHeight := ebiten.ScreenSizeInFullscreen()
+			screenWidth = monitorWidth
+			screenHeight = monitorHeight
+		} else {
+			// Going to windowed - use 90% of monitor size for a reasonable window
+			monitorWidth, monitorHeight := ebiten.ScreenSizeInFullscreen()
+			screenWidth = int(float64(monitorWidth) * 0.9)
+			screenHeight = int(float64(monitorHeight) * 0.9)
+		}
+		ebiten.SetWindowSize(screenWidth, screenHeight)
+	}
+	g.prevAltEnter = altEnterPressed
+
 	player := &g.ships[g.playerIndex]
 	g.updatePhysics(player, dt)
 	g.updateDust(dt, player)
