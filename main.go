@@ -244,9 +244,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 // updateRadarTrails updates the trail points for all ships on the radar
 func (g *Game) updateRadarTrails(dt float64, player *Ship) {
 	for i := range g.ships {
-		if i == g.playerIndex {
-			continue
-		}
 		ship := &g.ships[i]
 
 		// Initialize timer if needed
@@ -387,6 +384,69 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 	// Rotated radar (matches game rotation style). Rotate enemy positions relative to player angle.
 	scale := radarRadius / radarRange
+
+	// Draw player trail
+	playerTrail := g.radarTrails[g.playerIndex]
+	if len(playerTrail) > 1 {
+		playerColor := color.NRGBA{R: 180, G: 255, B: 200, A: 255} // Player color
+		for j := 0; j < len(playerTrail)-1; j++ {
+			p1 := playerTrail[j]
+			p2 := playerTrail[j+1]
+
+			// Transform world coordinates to radar coordinates (relative to current player position)
+			dx1 := p1.pos.x - player.pos.x
+			dy1 := p1.pos.y - player.pos.y
+			rotated1 := rotatePoint(vec2{dx1, dy1}, -player.angle)
+			rx1 := rotated1.x * scale
+			ry1 := rotated1.y * scale
+
+			dx2 := p2.pos.x - player.pos.x
+			dy2 := p2.pos.y - player.pos.y
+			rotated2 := rotatePoint(vec2{dx2, dy2}, -player.angle)
+			rx2 := rotated2.x * scale
+			ry2 := rotated2.y * scale
+
+			// Clamp to radar edge if needed
+			if edgeDist1 := math.Hypot(rx1, ry1); edgeDist1 > radarRadius-4 {
+				f := (radarRadius - 4) / edgeDist1
+				rx1 *= f
+				ry1 *= f
+			}
+			if edgeDist2 := math.Hypot(rx2, ry2); edgeDist2 > radarRadius-4 {
+				f := (radarRadius - 4) / edgeDist2
+				rx2 *= f
+				ry2 *= f
+			}
+
+			// Calculate opacity based on age (fade from full to transparent)
+			age := (p1.age + p2.age) / 2.0
+			opacity := 1.0 - (age / radarTrailMaxAge)
+			if opacity < 0 {
+				opacity = 0
+			}
+			if opacity > 1 {
+				opacity = 1
+			}
+
+			// Create faded color
+			trailColor := color.NRGBA{
+				R: playerColor.R,
+				G: playerColor.G,
+				B: playerColor.B,
+				A: uint8(float64(playerColor.A) * opacity * 0.6), // Max 60% opacity for trails
+			}
+
+			// Draw trail segment
+			ebitenutil.DrawLine(
+				screen,
+				center.x+rx1,
+				center.y+ry1,
+				center.x+rx2,
+				center.y+ry2,
+				trailColor,
+			)
+		}
+	}
 
 	for i := range g.ships {
 		if i == g.playerIndex {
