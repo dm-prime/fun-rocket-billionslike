@@ -19,7 +19,7 @@ const (
 	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
 	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
 	thrustAccel              = 230.0       // pixels per second^2
-	starCount                = 120
+	starCount                = 70
 	starBaseSpeed            = 20.0
 	retroAlignTolerance      = 20 * math.Pi / 180 // radians
 	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
@@ -108,14 +108,17 @@ func newGame() *Game {
 	}
 	g.playerIndex = 0
 
+	// Seed stars in a square around the player so rotated views stay filled.
+	initialSpan := math.Hypot(screenWidth, screenHeight) * 1.5
+	halfSpan := initialSpan * 0.5
 	for i := range g.stars {
 		g.stars[i] = star{
 			pos: vec2{
-				x: rand.Float64() * screenWidth,
-				y: rand.Float64() * screenHeight,
+				x: g.ships[g.playerIndex].pos.x + rand.Float64()*initialSpan - halfSpan,
+				y: g.ships[g.playerIndex].pos.y + rand.Float64()*initialSpan - halfSpan,
 			},
 			speed:  starBaseSpeed + rand.Float64()*starBaseSpeed,
-			radius: 1 + rand.Float64()*1.5,
+			radius: 1,
 		}
 	}
 
@@ -126,7 +129,7 @@ func (g *Game) Update() error {
 	dt := 1.0 / 60.0
 	player := &g.ships[g.playerIndex]
 	g.updatePhysics(player, dt)
-	g.updateStars(dt, player.vel)
+	g.updateStars(dt, player)
 
 	// Move non-player ships with their own velocities (no controls for now).
 	for i := range g.ships {
@@ -139,25 +142,30 @@ func (g *Game) Update() error {
 	return nil
 }
 
-func (g *Game) updateStars(dt float64, cameraVel vec2) {
+func (g *Game) updateStars(dt float64, player *Ship) {
 	// Move stars relative to ship velocity (opposite direction for parallax effect)
+	span := math.Hypot(screenWidth, screenHeight) * 1.5 // square torus sized by diagonal
+	half := span * 0.5
 	for i := range g.stars {
 		// Stars move opposite to ship movement
-		g.stars[i].pos.x -= cameraVel.x * dt
-		g.stars[i].pos.y -= cameraVel.y * dt
+		g.stars[i].pos.x -= player.vel.x * dt
+		g.stars[i].pos.y -= player.vel.y * dt
 
-		// Wrap stars around screen bounds
-		if g.stars[i].pos.x < 0 {
-			g.stars[i].pos.x += screenWidth
+		// Keep stars in a torus around the player so they don't depend on absolute origin.
+		dx := g.stars[i].pos.x - player.pos.x
+		dy := g.stars[i].pos.y - player.pos.y
+
+		if dx < -half {
+			g.stars[i].pos.x += span
 		}
-		if g.stars[i].pos.x > screenWidth {
-			g.stars[i].pos.x -= screenWidth
+		if dx > half {
+			g.stars[i].pos.x -= span
 		}
-		if g.stars[i].pos.y < 0 {
-			g.stars[i].pos.y += screenHeight
+		if dy < -half {
+			g.stars[i].pos.y += span
 		}
-		if g.stars[i].pos.y > screenHeight {
-			g.stars[i].pos.y -= screenHeight
+		if dy > half {
+			g.stars[i].pos.y -= span
 		}
 	}
 }
@@ -165,13 +173,16 @@ func (g *Game) updateStars(dt float64, cameraVel vec2) {
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.NRGBA{R: 3, G: 5, B: 16, A: 255})
 
-	// Draw stars (already positioned relative to ship movement)
-	for _, s := range g.stars {
-		drawCircle(screen, s.pos.x, s.pos.y, s.radius, color.NRGBA{R: 200, G: 200, B: 255, A: 255})
-	}
-
 	player := &g.ships[g.playerIndex]
 	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
+
+	// Draw stars (already positioned relative to ship movement)
+	for _, s := range g.stars {
+		offset := vec2{s.pos.x - player.pos.x, s.pos.y - player.pos.y}
+		rot := rotatePoint(offset, -player.angle)
+		drawCircle(screen, screenCenter.x+rot.x, screenCenter.y+rot.y, s.radius, color.NRGBA{R: 200, G: 200, B: 255, A: 255})
+	}
+
 	for i := range g.ships {
 		ship := &g.ships[i]
 		// Position relative to player so camera is centered on player ship.
