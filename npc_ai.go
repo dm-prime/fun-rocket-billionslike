@@ -73,12 +73,8 @@ func (g *Game) getNPCStateString(state NPCState) string {
 	}
 }
 
-// updateNPCStateMachine updates NPC behavior using a state machine
-func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) {
-	npc.thrustThisFrame = false
-	npc.turningThisFrame = false
-	npc.turnDirection = 0
-
+// updateNPCStateMachine generates ShipInput for NPC based on state machine
+func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) ShipInput {
 	// Calculate situation
 	dx := player.pos.x - npc.pos.x
 	dy := player.pos.y - npc.pos.y
@@ -104,7 +100,7 @@ func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) {
 		}
 	}
 	if shipIndex < 0 {
-		return // Ship not found, skip
+		return ShipInput{} // Ship not found, skip
 	}
 
 	// Get current state
@@ -126,25 +122,21 @@ func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) {
 		currentState = nextState
 	}
 
-	// Execute state behavior
+	// Execute state behavior and generate input
 	switch currentState {
 	case NPCStateLost:
-		g.executeLostState(npc, player, dt, dx, dy, dist)
+		return g.executeLostState(npc, player, dt, dx, dy, dist)
 	case NPCStatePursue:
-		g.executePursueState(npc, player, dt, dx, dy, dist)
+		return g.executePursueState(npc, player, dt, dx, dy, dist)
 	case NPCStateApproach:
-		g.executeApproachState(npc, player, dt, dx, dy, dist, closingSpeed)
+		return g.executeApproachState(npc, player, dt, dx, dy, dist, closingSpeed)
 	case NPCStateHold:
-		g.executeHoldState(npc, player, dt, dx, dy, dist, closingSpeed)
+		return g.executeHoldState(npc, player, dt, dx, dy, dist, closingSpeed)
 	case NPCStateIdle:
-		g.executeIdleState(npc, player, dt, dx, dy, dist)
+		return g.executeIdleState(npc, player, dt, dx, dy, dist)
 	default:
 		panic(fmt.Sprintf("UNKNOWN STATE: %d", currentState))
 	}
-
-	// Update position
-	npc.pos.x += npc.vel.x * dt
-	npc.pos.y += npc.vel.y * dt
 }
 
 // determineNextState determines the next state based on current state and conditions
@@ -309,20 +301,15 @@ func (g *Game) getStateTransitions() []NPCStateTransition {
 }
 
 // executeLostState handles behavior when player is lost
-func (g *Game) executeLostState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64) {
+func (g *Game) executeLostState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64) ShipInput {
 	// Point directly at player and burn hard - match player speed
-	playerSpeed := math.Hypot(player.vel.x, player.vel.y)
-	targetSpeed := playerSpeed * npcPursueSpeedMult
 	targetAngle := math.Atan2(dx, -dy)
-	g.turnTowardAngle(npc, targetAngle, dt)
-	g.thrustIfAligned(npc, targetAngle, targetSpeed, dt)
+	return g.generateInputForAngle(npc, targetAngle, true, dt)
 }
 
 // executePursueState handles aggressive pursuit
-func (g *Game) executePursueState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64) {
+func (g *Game) executePursueState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64) ShipInput {
 	// Lead the target for intercept - match player speed
-	playerSpeed := math.Hypot(player.vel.x, player.vel.y)
-	targetSpeed := playerSpeed * npcPursueSpeedMult
 	leadTime := clamp(dist/250.0, 0.1, 1.5)
 	targetX := player.pos.x + player.vel.x*leadTime
 	targetY := player.pos.y + player.vel.y*leadTime
@@ -330,12 +317,11 @@ func (g *Game) executePursueState(npc *Ship, player *Ship, dt float64, dx, dy, d
 	tdy := targetY - npc.pos.y
 	targetAngle := math.Atan2(tdx, -tdy)
 
-	g.turnTowardAngle(npc, targetAngle, dt)
-	g.thrustIfAligned(npc, targetAngle, targetSpeed, dt)
+	return g.generateInputForAngle(npc, targetAngle, true, dt)
 }
 
 // executeApproachState handles careful approach to maintain distance
-func (g *Game) executeApproachState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64, closingSpeed float64) {
+func (g *Game) executeApproachState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64, closingSpeed float64) ShipInput {
 	currentSpeed := math.Hypot(npc.vel.x, npc.vel.y)
 
 	// Calculate stopping distance
@@ -380,16 +366,11 @@ func (g *Game) executeApproachState(npc *Ship, player *Ship, dt float64, dx, dy,
 		shouldThrust = false
 	}
 
-	g.turnTowardAngle(npc, targetAngle, dt)
-	if shouldThrust {
-		playerSpeed := math.Hypot(player.vel.x, player.vel.y)
-		targetSpeed := playerSpeed * npcApproachSpeedMult
-		g.thrustIfAligned(npc, targetAngle, targetSpeed, dt)
-	}
+	return g.generateInputForAngle(npc, targetAngle, shouldThrust, dt)
 }
 
 // executeHoldState maintains position at desired distance
-func (g *Game) executeHoldState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64, closingSpeed float64) {
+func (g *Game) executeHoldState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64, closingSpeed float64) ShipInput {
 	currentSpeed := math.Hypot(npc.vel.x, npc.vel.y)
 	relVelX := npc.vel.x - player.vel.x
 	relVelY := npc.vel.y - player.vel.y
@@ -419,82 +400,40 @@ func (g *Game) executeHoldState(npc *Ship, player *Ship, dt float64, dx, dy, dis
 		}
 	}
 
-	g.turnTowardAngle(npc, targetAngle, dt)
-	if shouldThrust {
-		playerSpeed := math.Hypot(player.vel.x, player.vel.y)
-		targetSpeed := playerSpeed * npcHoldSpeedMult
-		g.thrustIfAligned(npc, targetAngle, targetSpeed, dt)
-	}
+	return g.generateInputForAngle(npc, targetAngle, shouldThrust, dt)
 }
 
 // executeIdleState handles idle/patrol behavior
-func (g *Game) executeIdleState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64) {
+func (g *Game) executeIdleState(npc *Ship, player *Ship, dt float64, dx, dy, dist float64) ShipInput {
 	// Simple: turn toward player but don't thrust much
 	targetAngle := math.Atan2(dx, -dy)
-	g.turnTowardAngle(npc, targetAngle, dt)
-
 	currentSpeed := math.Hypot(npc.vel.x, npc.vel.y)
-	if currentSpeed < npcMinSpeedToThrust {
-		g.thrustIfAligned(npc, targetAngle, 50.0, dt)
-	}
+	shouldThrust := currentSpeed < npcMinSpeedToThrust
+	return g.generateInputForAngle(npc, targetAngle, shouldThrust, dt)
 }
 
-// turnTowardAngle handles turning logic toward a target angle
-func (g *Game) turnTowardAngle(npc *Ship, targetAngle float64, dt float64) {
+// generateInputForAngle generates ShipInput to turn toward a target angle and optionally thrust
+func (g *Game) generateInputForAngle(npc *Ship, targetAngle float64, shouldThrust bool, dt float64) ShipInput {
+	input := ShipInput{}
 	angleDiff := normalizeAngle(targetAngle - npc.angle)
 
-	// PID-lite controller
+	// PID-lite controller for turning
 	desiredAngVel := clamp(angleDiff*3.2, -maxAngularSpeed*0.6, maxAngularSpeed*0.6)
 	if math.Abs(angleDiff) < 0.25 && math.Abs(desiredAngVel) < 0.3 {
 		desiredAngVel = 0
 	}
 
-	maxStep := angularAccel * dt
-	angVelError := desiredAngVel - npc.angularVel
-	if math.Abs(angVelError) > 0.0001 {
-		delta := clamp(angVelError, -maxStep, maxStep)
-		npc.angularVel += delta
-		if delta > 0.0001 {
-			npc.turningThisFrame = true
-			npc.turnDirection = 1
-		} else if delta < -0.0001 {
-			npc.turningThisFrame = true
-			npc.turnDirection = -1
-		}
-	} else {
-		npc.angularVel = desiredAngVel
+	// Determine turn direction based on desired angular velocity
+	if desiredAngVel > 0.01 {
+		input.TurnRight = true
+	} else if desiredAngVel < -0.01 {
+		input.TurnLeft = true
 	}
 
-	// Extra damping when close to target
-	if math.Abs(angleDiff) < 0.06 && math.Abs(npc.angularVel) < 0.12 {
-		npc.angularVel = 0
-		npc.turningThisFrame = false
-		npc.turnDirection = 0
+	// Thrust if aligned and should thrust
+	if shouldThrust && math.Abs(angleDiff) < npcAlignThreshold {
+		input.ThrustForward = true
 	}
 
-	// Clamp angular velocity
-	if npc.angularVel > maxAngularSpeed {
-		npc.angularVel = maxAngularSpeed
-	}
-	if npc.angularVel < -maxAngularSpeed {
-		npc.angularVel = -maxAngularSpeed
-	}
-
-	// Update angle
-	npc.angle += npc.angularVel * dt
-}
-
-// thrustIfAligned only thrusts if aligned with target angle and speed conditions are met
-func (g *Game) thrustIfAligned(npc *Ship, targetAngle float64, maxSpeed float64, dt float64) {
-	angleDiff := normalizeAngle(targetAngle - npc.angle)
-	currentSpeed := math.Hypot(npc.vel.x, npc.vel.y)
-
-	// Only thrust if aligned and not going too fast
-	if math.Abs(angleDiff) < npcAlignThreshold && currentSpeed < maxSpeed {
-		forwardX := math.Sin(npc.angle)
-		forwardY := -math.Cos(npc.angle)
-		npc.vel.x += forwardX * thrustAccel * dt
-		npc.vel.y += forwardY * thrustAccel * dt
-		npc.thrustThisFrame = true
-	}
+	return input
 }

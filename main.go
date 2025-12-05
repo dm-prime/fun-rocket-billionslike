@@ -75,16 +75,25 @@ func (g *Game) Update() error {
 	g.handleInput()
 
 	player := &g.ships[g.playerIndex]
-	g.updatePhysics(player, dt)
-	g.updateDust(dt, player)
 
-	// Update NPC AI to follow the player
+	// Update all ships using unified physics system
 	for i := range g.ships {
-		if i == g.playerIndex {
-			continue
+		ship := &g.ships[i]
+		var input ShipInput
+
+		if ship.isPlayer {
+			// Player: read keyboard input
+			input = getPlayerInput()
+		} else {
+			// NPC: generate input from AI state machine
+			input = g.updateNPCStateMachine(ship, player, dt)
 		}
-		g.updateNPC(&g.ships[i], player, dt)
+
+		// Apply physics using unified system
+		g.updatePhysics(ship, input, dt)
 	}
+
+	g.updateDust(dt, player)
 
 	// Update radar trails
 	g.updateRadarTrails(dt, player)

@@ -31,4 +31,12 @@ func (g *Game) handleInput() {
 	g.prevAltEnter = altEnterPressed
 }
 
-
+// getPlayerInput reads keyboard input and returns ShipInput for the player
+func getPlayerInput() ShipInput {
+	return ShipInput{
+		TurnLeft:      ebiten.IsKeyPressed(ebiten.KeyLeft) || ebiten.IsKeyPressed(ebiten.KeyA),
+		TurnRight:     ebiten.IsKeyPressed(ebiten.KeyRight) || ebiten.IsKeyPressed(ebiten.KeyD),
+		ThrustForward: ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW),
+		RetrogradeBurn: ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS),
+	}
+}

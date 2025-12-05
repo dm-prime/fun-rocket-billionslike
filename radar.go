@@ -293,7 +293,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			// Draw dot
 			drawCircle(screen, baseX, baseY, radarBlipSize, b.blipColor)
 			ebitenutil.DebugPrintAt(screen, b.label, int(b.labelX), int(b.labelY))
-			
+
 			// Draw state label below distance
 			state := g.getNPCState(b.shipIndex)
 			stateLabel := g.getNPCStateString(state)
@@ -354,7 +354,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 					labelY = dotY - radarLabelOffsetY
 				}
 				ebitenutil.DebugPrintAt(screen, b.label, int(labelX), int(labelY))
-				
+
 				// Draw state label below distance
 				state := g.getNPCState(b.shipIndex)
 				stateLabel := g.getNPCStateString(state)
@@ -410,5 +410,3 @@ func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, bas
 		ebitenutil.DrawLine(screen, baseX, baseY, baseX+vx, baseY+vy, colorRadarSpeedVector)
 	}
 }
-
-

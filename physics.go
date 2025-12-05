@@ -2,24 +2,23 @@ package main
 
 import (
 	"math"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // updatePhysics applies input-driven forces, rotation, and retrograde logic.
-func (g *Game) updatePhysics(ship *Ship, dt float64) {
+// This function works for ALL ships - player or NPC - using the unified ShipInput interface.
+func (g *Game) updatePhysics(ship *Ship, input ShipInput, dt float64) {
 	ship.thrustThisFrame = false
 	ship.turningThisFrame = false
 	ship.turnDirection = 0
 	ship.dampingAngularSpeed = false
 
 	// Apply angular acceleration based on input
-	if ebiten.IsKeyPressed(ebiten.KeyLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
+	if input.TurnLeft {
 		ship.angularVel -= angularAccel * dt
 		ship.turningThisFrame = true
 		ship.turnDirection = -1
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
+	if input.TurnRight {
 		ship.angularVel += angularAccel * dt
 		ship.turningThisFrame = true
 		ship.turnDirection = 1
@@ -55,14 +54,14 @@ func (g *Game) updatePhysics(ship *Ship, dt float64) {
 	forwardX := math.Sin(ship.angle)
 	forwardY := -math.Cos(ship.angle)
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
+	if input.ThrustForward {
 		ship.vel.x += forwardX * thrustAccel * dt
 		ship.vel.y += forwardY * thrustAccel * dt
 		ship.thrustThisFrame = true
 	}
 
-	// S key activates retrograde burn mode
-	if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
+	// Retrograde burn mode
+	if input.RetrogradeBurn {
 		if !ship.retrogradeMode {
 			// Entering retrograde mode - calculate the fastest turn direction
 			ship.retrogradeMode = true
@@ -73,7 +72,7 @@ func (g *Game) updatePhysics(ship *Ship, dt float64) {
 			g.executeRetrogradeBurn(ship, dt)
 		}
 	} else {
-		// S key not held - immediately cancel retrograde mode
+		// Retrograde burn not active - immediately cancel retrograde mode
 		if ship.retrogradeMode {
 			ship.retrogradeMode = false
 			ship.retrogradeTurnDir = 0
@@ -226,9 +225,10 @@ const (
 	npcMaxSpeed      = 1000.0 // maximum speed NPCs should maintain
 )
 
-// updateNPC updates NPC behavior using the state machine
+// updateNPC generates input for NPC and applies physics - NO LONGER NEEDED, kept for compatibility
+// This function is deprecated - NPCs now generate inputs in main loop
 func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
-	g.updateNPCStateMachine(npc, player, dt)
+	// This is now handled in main.go Update loop
 }
 
 // clamp limits a value to a range

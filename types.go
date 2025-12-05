@@ -8,6 +8,14 @@ type vec2 struct {
 	y float64
 }
 
+// ShipInput represents the control inputs for a ship
+type ShipInput struct {
+	TurnLeft       bool // Turn left (A/Left arrow)
+	TurnRight      bool // Turn right (D/Right arrow)
+	ThrustForward  bool // Thrust forward (W/Up arrow)
+	RetrogradeBurn bool // Retrograde burn (S/Down arrow)
+}
+
 // Ship represents a single spacecraft in the world.
 type Ship struct {
 	pos                 vec2
@@ -51,5 +59,3 @@ type Game struct {
 	initialized      bool                      // track if screen size has been initialized
 	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
 }
-
-
