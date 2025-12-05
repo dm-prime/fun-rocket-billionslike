@@ -24,6 +24,11 @@ const (
 	retroAlignTolerance      = 20 * math.Pi / 180 // radians
 	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
 	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
+	radarRadius              = 70.0
+	radarRange               = 520.0
+	radarMargin              = 14.0
+	indicatorMargin          = 18.0
+	indicatorArrowLen        = 18.0
 )
 
 type vec2 struct {
@@ -163,6 +168,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawShip(screen, ship, shipScreenX, shipScreenY)
 	}
 
+	g.drawOffscreenIndicators(screen, player)
+
 	retroStatus := ""
 	if player.retrogradeMode {
 		speed := math.Hypot(player.vel.x, player.vel.y)
@@ -177,6 +184,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	hud := fmt.Sprintf("S: Retrograde Burn | Speed: %0.1f | Angular: %0.2f rad/s%s",
 		math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
 	ebitenutil.DebugPrint(screen, hud)
+
+	g.drawRadar(screen, player)
 }
 
 func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64) {
@@ -259,6 +268,136 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 			// Rotating left, fire right thruster to counter
 			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY) // right
 		}
+	}
+}
+
+// drawRadar renders a simple orientable radar in the top-right corner showing nearby enemies.
+func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
+	center := vec2{
+		x: float64(screenWidth) - radarMargin - radarRadius,
+		y: radarMargin + radarRadius,
+	}
+
+	// Radar backdrop and crosshair
+	drawCircle(screen, center.x, center.y, radarRadius+4, color.NRGBA{R: 10, G: 16, B: 32, A: 230})
+	ebitenutil.DrawLine(screen, center.x-radarRadius, center.y, center.x+radarRadius, center.y, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
+	ebitenutil.DrawLine(screen, center.x, center.y-radarRadius, center.x, center.y+radarRadius, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
+
+	// Player heading marker (shows facing direction relative to fixed-world radar)
+	headingLen := radarRadius - 8
+	headX := center.x + math.Sin(player.angle)*headingLen
+	headY := center.y - math.Cos(player.angle)*headingLen
+	ebitenutil.DrawLine(screen, center.x, center.y, headX, headY, color.NRGBA{R: 120, G: 210, B: 255, A: 255})
+	drawCircle(screen, center.x, center.y, 2, color.NRGBA{R: 180, G: 255, B: 200, A: 255})
+
+	// Fixed-world radar (no rotation). +X right, +Y down.
+	scale := radarRadius / radarRange
+
+	for i := range g.ships {
+		if i == g.playerIndex {
+			continue
+		}
+		enemy := &g.ships[i]
+
+		dx := enemy.pos.x - player.pos.x
+		dy := enemy.pos.y - player.pos.y
+
+		dist := math.Hypot(dx, dy)
+		if dist > radarRange {
+			continue // too far to display
+		}
+
+		rx := dx * scale
+		ry := dy * scale
+
+		// Clamp to radar edge so distant targets sit on the rim
+		if edgeDist := math.Hypot(rx, ry); edgeDist > radarRadius-4 {
+			f := (radarRadius - 4) / edgeDist
+			rx *= f
+			ry *= f
+		}
+
+		drawCircle(screen, center.x+rx, center.y+ry, 3, color.NRGBA{R: 255, G: 90, B: 90, A: 255})
+	}
+}
+
+// drawOffscreenIndicators draws edge-of-screen markers for enemies that are not visible.
+func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
+	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
+	minX := indicatorMargin
+	maxX := float64(screenWidth) - indicatorMargin
+	minY := indicatorMargin
+	maxY := float64(screenHeight) - indicatorMargin
+
+	for i := range g.ships {
+		if i == g.playerIndex {
+			continue
+		}
+		enemy := &g.ships[i]
+
+		dx := enemy.pos.x - player.pos.x
+		dy := enemy.pos.y - player.pos.y
+		dist := math.Hypot(dx, dy)
+		if dist < 1 {
+			continue
+		}
+
+		screenX := screenCenter.x + dx
+		screenY := screenCenter.y + dy
+
+		// If on-screen, skip indicator.
+		if screenX >= 0 && screenX <= float64(screenWidth) && screenY >= 0 && screenY <= float64(screenHeight) {
+			continue
+		}
+
+		// Clamp to edge with margin.
+		clampedX := math.Min(math.Max(screenX, minX), maxX)
+		clampedY := math.Min(math.Max(screenY, minY), maxY)
+
+		dirX := dx / dist
+		dirY := dy / dist
+
+		// Arrow body
+		tipX := clampedX + dirX*indicatorArrowLen*0.6
+		tipY := clampedY + dirY*indicatorArrowLen*0.6
+		tailX := clampedX - dirX*indicatorArrowLen*0.4
+		tailY := clampedY - dirY*indicatorArrowLen*0.4
+		ebitenutil.DrawLine(screen, tailX, tailY, tipX, tipY, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+
+		// Arrow wings
+		wingAngle := math.Pi / 6
+		sinA := math.Sin(wingAngle)
+		cosA := math.Cos(wingAngle)
+		leftWing := vec2{
+			x: dirX*cosA - dirY*sinA,
+			y: dirX*sinA + dirY*cosA,
+		}
+		rightWing := vec2{
+			x: dirX*cosA + dirY*sinA,
+			y: -dirX*sinA + dirY*cosA,
+		}
+		wingLen := indicatorArrowLen * 0.5
+		ebitenutil.DrawLine(screen, tipX, tipY, tipX-leftWing.x*wingLen, tipY-leftWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+		ebitenutil.DrawLine(screen, tipX, tipY, tipX-rightWing.x*wingLen, tipY-rightWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+
+		// Distance label
+		label := fmt.Sprintf("%.0f", dist)
+		labelX := clampedX + 8
+		labelY := clampedY - 8
+		maxLabelX := float64(screenWidth) - 48 // keep text inside bounds
+		if labelX > maxLabelX {
+			labelX = maxLabelX
+		}
+		if labelX < 4 {
+			labelX = 4
+		}
+		if labelY < 4 {
+			labelY = 4
+		}
+		if labelY > float64(screenHeight)-12 {
+			labelY = float64(screenHeight) - 12
+		}
+		ebitenutil.DebugPrintAt(screen, label, int(labelX), int(labelY))
 	}
 }
 
