@@ -219,18 +219,19 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 	}
 }
 
-// NPC behavior constants
+// NPC behavior constants (shared with npc_ai.go)
 const (
-	npcDesiredDist     = 80.0 // standoff distance from player
-	npcReacquireDist   = 600.0
-	npcThrustThreshold = 0.3   // minimum velocity change needed to justify thrusting
-	npcCoastThreshold  = 5.0   // if speed is below this, always try to accelerate
-	npcMaxSpeed        = 200.0 // maximum speed NPCs should maintain
-	npcThrustCooldown  = 0.3   // seconds between thrust bursts
+	npcDesiredDist   = 80.0  // standoff distance from player
+	npcReacquireDist = 600.0 // distance at which we consider player lost
+	npcMaxSpeed      = 200.0 // maximum speed NPCs should maintain
 )
 
-// updateNPC uses the same physics as the player - can only turn and thrust forward
+// updateNPC updates NPC behavior using the state machine
 func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
+	g.updateNPCStateMachine(npc, player, dt)
+}
+
+// Old updateNPC implementation removed - now using state machine in npc_ai.go
 	npc.thrustThisFrame = false
 	npc.turningThisFrame = false
 	npc.turnDirection = 0
