@@ -218,3 +218,82 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 		ship.thrustThisFrame = true
 	}
 }
+
+// updateNPC updates an NPC ship to follow the player
+func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
+	npc.thrustThisFrame = false
+	npc.turningThisFrame = false
+	npc.turnDirection = 0
+
+	// Calculate direction to player
+	dx := player.pos.x - npc.pos.x
+	dy := player.pos.y - npc.pos.y
+	dist := math.Hypot(dx, dy)
+
+	// If very close, don't move
+	if dist < 10 {
+		// Apply damping to slow down
+		npc.vel.x *= 0.95
+		npc.vel.y *= 0.95
+		npc.pos.x += npc.vel.x * dt
+		npc.pos.y += npc.vel.y * dt
+		return
+	}
+
+	// Calculate target angle (direction to player)
+	targetAngle := math.Atan2(dx, -dy) // Using -dy because ship forward is (sin(angle), -cos(angle))
+	angleDiff := normalizeAngle(targetAngle - npc.angle)
+
+	// Turn towards the player
+	if math.Abs(angleDiff) > 0.05 { // Small threshold to avoid jitter
+		npc.turningThisFrame = true
+		if angleDiff > 0 {
+			npc.angularVel += angularAccel * dt
+			npc.turnDirection = 1
+		} else {
+			npc.angularVel -= angularAccel * dt
+			npc.turnDirection = -1
+		}
+	} else {
+		// Close enough - dampen angular velocity
+		if math.Abs(npc.angularVel) > 0.01 {
+			if npc.angularVel > 0 {
+				npc.angularVel -= angularDampingAccel * dt * 0.5
+				if npc.angularVel < 0 {
+					npc.angularVel = 0
+				}
+			} else {
+				npc.angularVel += angularDampingAccel * dt * 0.5
+				if npc.angularVel > 0 {
+					npc.angularVel = 0
+				}
+			}
+		}
+	}
+
+	// Clamp angular velocity to max speed
+	if npc.angularVel > maxAngularSpeed {
+		npc.angularVel = maxAngularSpeed
+	}
+	if npc.angularVel < -maxAngularSpeed {
+		npc.angularVel = -maxAngularSpeed
+	}
+
+	// Update ship angle based on angular velocity
+	npc.angle += npc.angularVel * dt
+
+	// Accelerate towards player (thrust forward)
+	forwardX := math.Sin(npc.angle)
+	forwardY := -math.Cos(npc.angle)
+
+	// Only thrust if reasonably aligned with target (within 45 degrees)
+	if math.Abs(angleDiff) < math.Pi/4 {
+		npc.vel.x += forwardX * thrustAccel * dt
+		npc.vel.y += forwardY * thrustAccel * dt
+		npc.thrustThisFrame = true
+	}
+
+	// Update position
+	npc.pos.x += npc.vel.x * dt
+	npc.pos.y += npc.vel.y * dt
+}

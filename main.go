@@ -27,10 +27,13 @@ const (
 	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
 	retroBurnAlignWindow     = 8 * math.Pi / 180  // radians, must be within this to burn
 	radarRadius              = 200.0
-	radarRange               = 520.0
+	radarRange               = 1520.0
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
 	indicatorArrowLen        = 18.0
+	radarTrailMaxAge         = 3.0 // seconds
+	radarTrailUpdateInterval = 0.1 // seconds between trail points
+	radarTrailMaxPoints      = 30  // maximum trail points per ship
 )
 
 type vec2 struct {
@@ -61,20 +64,32 @@ type dust struct {
 	radius float64
 }
 
+// RadarTrailPoint represents a single point in a ship's radar trail
+type RadarTrailPoint struct {
+	pos vec2    // world coordinates
+	age float64 // age in seconds
+}
+
+// Game holds the minimal state required for a simple arcade-feel spaceship demo.
+
 // Game holds the minimal state required for a simple arcade-feel spaceship demo.
 type Game struct {
-	ships         []Ship
-	playerIndex   int
-	dust          []dust
-	factionColors map[string]color.NRGBA
-	alliances     map[string]map[string]bool
+	ships            []Ship
+	playerIndex      int
+	dust             []dust
+	factionColors    map[string]color.NRGBA
+	alliances        map[string]map[string]bool
+	radarTrails      map[int][]RadarTrailPoint // ship index -> trail points
+	radarTrailTimers map[int]float64           // ship index -> time since last trail point
 }
 
 func newGame() *Game {
 	rand.Seed(time.Now().UnixNano())
 
 	g := &Game{
-		dust: make([]dust, dustCount),
+		dust:             make([]dust, dustCount),
+		radarTrails:      make(map[int][]RadarTrailPoint),
+		radarTrailTimers: make(map[int]float64),
 	}
 	g.initFactions()
 
@@ -133,14 +148,17 @@ func (g *Game) Update() error {
 	g.updatePhysics(player, dt)
 	g.updateDust(dt, player)
 
-	// Move non-player ships with their own velocities (no controls for now).
+	// Update NPC AI to follow the player
 	for i := range g.ships {
 		if i == g.playerIndex {
 			continue
 		}
-		g.ships[i].pos.x += g.ships[i].vel.x * dt
-		g.ships[i].pos.y += g.ships[i].vel.y * dt
+		g.updateNPC(&g.ships[i], player, dt)
 	}
+
+	// Update radar trails
+	g.updateRadarTrails(dt, player)
+
 	return nil
 }
 
@@ -221,6 +239,51 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ebitenutil.DebugPrint(screen, hud)
 
 	g.drawRadar(screen, player)
+}
+
+// updateRadarTrails updates the trail points for all ships on the radar
+func (g *Game) updateRadarTrails(dt float64, player *Ship) {
+	for i := range g.ships {
+		if i == g.playerIndex {
+			continue
+		}
+		ship := &g.ships[i]
+
+		// Initialize timer if needed
+		if _, exists := g.radarTrailTimers[i]; !exists {
+			g.radarTrailTimers[i] = 0
+		}
+
+		// Age existing trail points
+		trail := g.radarTrails[i]
+		for j := range trail {
+			trail[j].age += dt
+		}
+
+		// Remove old trail points
+		newTrail := make([]RadarTrailPoint, 0, len(trail))
+		for _, point := range trail {
+			if point.age < radarTrailMaxAge {
+				newTrail = append(newTrail, point)
+			}
+		}
+		g.radarTrails[i] = newTrail
+
+		// Add new trail point periodically
+		g.radarTrailTimers[i] += dt
+		if g.radarTrailTimers[i] >= radarTrailUpdateInterval {
+			// Add new point with world coordinates
+			newPoint := RadarTrailPoint{pos: ship.pos, age: 0}
+			g.radarTrails[i] = append(g.radarTrails[i], newPoint)
+
+			// Limit trail length
+			if len(g.radarTrails[i]) > radarTrailMaxPoints {
+				g.radarTrails[i] = g.radarTrails[i][1:]
+			}
+
+			g.radarTrailTimers[i] = 0
+		}
+	}
 }
 
 func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2) {
@@ -377,6 +440,69 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				f := (radarRadius - 4) / edgeDist
 				rx *= f
 				ry *= f
+			}
+		}
+
+		// Draw fading trail
+		trail := g.radarTrails[i]
+		if len(trail) > 1 {
+			baseColor := g.colorForFaction(enemy.faction)
+			for j := 0; j < len(trail)-1; j++ {
+				p1 := trail[j]
+				p2 := trail[j+1]
+
+				// Transform world coordinates to radar coordinates
+				dx1 := p1.pos.x - player.pos.x
+				dy1 := p1.pos.y - player.pos.y
+				rotated1 := rotatePoint(vec2{dx1, dy1}, -player.angle)
+				rx1 := rotated1.x * scale
+				ry1 := rotated1.y * scale
+
+				dx2 := p2.pos.x - player.pos.x
+				dy2 := p2.pos.y - player.pos.y
+				rotated2 := rotatePoint(vec2{dx2, dy2}, -player.angle)
+				rx2 := rotated2.x * scale
+				ry2 := rotated2.y * scale
+
+				// Clamp to radar edge if needed
+				if edgeDist1 := math.Hypot(rx1, ry1); edgeDist1 > radarRadius-4 {
+					f := (radarRadius - 4) / edgeDist1
+					rx1 *= f
+					ry1 *= f
+				}
+				if edgeDist2 := math.Hypot(rx2, ry2); edgeDist2 > radarRadius-4 {
+					f := (radarRadius - 4) / edgeDist2
+					rx2 *= f
+					ry2 *= f
+				}
+
+				// Calculate opacity based on age (fade from full to transparent)
+				age := (p1.age + p2.age) / 2.0
+				opacity := 1.0 - (age / radarTrailMaxAge)
+				if opacity < 0 {
+					opacity = 0
+				}
+				if opacity > 1 {
+					opacity = 1
+				}
+
+				// Create faded color
+				trailColor := color.NRGBA{
+					R: baseColor.R,
+					G: baseColor.G,
+					B: baseColor.B,
+					A: uint8(float64(baseColor.A) * opacity * 0.6), // Max 60% opacity for trails
+				}
+
+				// Draw trail segment
+				ebitenutil.DrawLine(
+					screen,
+					center.x+rx1,
+					center.y+ry1,
+					center.x+rx2,
+					center.y+ry2,
+					trailColor,
+				)
 			}
 		}
 
