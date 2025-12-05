@@ -31,6 +31,22 @@ type vec2 struct {
 	y float64
 }
 
+// Ship represents a single spacecraft in the world.
+type Ship struct {
+	pos                 vec2
+	vel                 vec2
+	angle               float64
+	angularVel          float64
+	health              float64
+	thrustThisFrame     bool
+	turningThisFrame    bool
+	turnDirection       float64 // -1 for left, 1 for right, 0 for none
+	dampingAngularSpeed bool    // true when S key is pressed to dampen angular speed
+	retrogradeMode      bool    // true when performing retrograde burn maneuver
+	retrogradeTurnDir   float64 // chosen turn direction for retrograde (-1 or 1)
+	isPlayer            bool
+}
+
 type star struct {
 	pos    vec2
 	speed  float64
@@ -39,28 +55,39 @@ type star struct {
 
 // Game holds the minimal state required for a simple arcade-feel spaceship demo.
 type Game struct {
-	shipPos             vec2
-	shipVel             vec2
-	shipAngle           float64
-	shipAngularVel      float64 // angular velocity in radians per second
-	health              float64
-	stars               []star
-	thrustThisFrame     bool
-	turningThisFrame    bool
-	turnDirection       float64 // -1 for left, 1 for right, 0 for none
-	dampingAngularSpeed bool    // true when S key is pressed to dampen angular speed
-	retrogradeMode      bool    // true when performing retrograde burn maneuver
-	retrogradeTurnDir   float64 // chosen turn direction for retrograde (-1 or 1)
+	ships       []Ship
+	playerIndex int
+	stars       []star
 }
 
 func newGame() *Game {
 	rand.Seed(time.Now().UnixNano())
 
 	g := &Game{
-		shipPos: vec2{screenWidth * 0.5, screenHeight * 0.5},
-		health:  100.0,
-		stars:   make([]star, starCount),
+		stars: make([]star, starCount),
 	}
+
+	// Create a few ships; index 0 is player, others are passive demo ships.
+	g.ships = []Ship{
+		{
+			pos:      vec2{screenWidth * 0.5, screenHeight * 0.5},
+			health:   100,
+			isPlayer: true,
+		},
+		{
+			pos:    vec2{screenWidth*0.5 + 120, screenHeight*0.5 - 60},
+			angle:  math.Pi * 0.25,
+			vel:    vec2{30, -10},
+			health: 100,
+		},
+		{
+			pos:    vec2{screenWidth*0.5 - 160, screenHeight*0.5 + 90},
+			angle:  -math.Pi * 0.5,
+			vel:    vec2{-20, 25},
+			health: 100,
+		},
+	}
+	g.playerIndex = 0
 
 	for i := range g.stars {
 		g.stars[i] = star{
@@ -78,17 +105,27 @@ func newGame() *Game {
 
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
-	g.updatePhysics(dt)
-	g.updateStars(dt)
+	player := &g.ships[g.playerIndex]
+	g.updatePhysics(player, dt)
+	g.updateStars(dt, player.vel)
+
+	// Move non-player ships with their own velocities (no controls for now).
+	for i := range g.ships {
+		if i == g.playerIndex {
+			continue
+		}
+		g.ships[i].pos.x += g.ships[i].vel.x * dt
+		g.ships[i].pos.y += g.ships[i].vel.y * dt
+	}
 	return nil
 }
 
-func (g *Game) updateStars(dt float64) {
+func (g *Game) updateStars(dt float64, cameraVel vec2) {
 	// Move stars relative to ship velocity (opposite direction for parallax effect)
 	for i := range g.stars {
 		// Stars move opposite to ship movement
-		g.stars[i].pos.x -= g.shipVel.x * dt
-		g.stars[i].pos.y -= g.shipVel.y * dt
+		g.stars[i].pos.x -= cameraVel.x * dt
+		g.stars[i].pos.y -= cameraVel.y * dt
 
 		// Wrap stars around screen bounds
 		if g.stars[i].pos.x < 0 {
@@ -114,13 +151,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		drawCircle(screen, s.pos.x, s.pos.y, s.radius, color.NRGBA{R: 200, G: 200, B: 255, A: 255})
 	}
 
-	g.drawShip(screen)
+	player := &g.ships[g.playerIndex]
+	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
+	for i := range g.ships {
+		ship := &g.ships[i]
+		// Position relative to player so camera is centered on player ship.
+		offsetX := ship.pos.x - player.pos.x
+		offsetY := ship.pos.y - player.pos.y
+		shipScreenX := screenCenter.x + offsetX
+		shipScreenY := screenCenter.y + offsetY
+		g.drawShip(screen, ship, shipScreenX, shipScreenY)
+	}
 
 	retroStatus := ""
-	if g.retrogradeMode {
-		speed := math.Hypot(g.shipVel.x, g.shipVel.y)
-		targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
-		angleDiff := math.Abs(normalizeAngle(targetAngle-g.shipAngle)) * 180 / math.Pi
+	if player.retrogradeMode {
+		speed := math.Hypot(player.vel.x, player.vel.y)
+		targetAngle := math.Atan2(-player.vel.x, player.vel.y)
+		angleDiff := math.Abs(normalizeAngle(targetAngle-player.angle)) * 180 / math.Pi
 		if angleDiff > 20 {
 			retroStatus = fmt.Sprintf(" | RETROGRADE: TURNING (%.0f° off)", angleDiff)
 		} else {
@@ -128,19 +175,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 	hud := fmt.Sprintf("S: Retrograde Burn | Speed: %0.1f | Angular: %0.2f rad/s%s",
-		math.Hypot(g.shipVel.x, g.shipVel.y), g.shipAngularVel, retroStatus)
+		math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
 	ebitenutil.DebugPrint(screen, hud)
 }
 
-func (g *Game) drawShip(screen *ebiten.Image) {
-	// Ship is always rendered at screen center
-	shipCenterX := float64(screenWidth) * 0.5
-	shipCenterY := float64(screenHeight) * 0.5
+func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64) {
+	// Draw player brighter; others dimmer.
+	var shipColor color.Color = color.White
+	if !ship.isPlayer {
+		shipColor = color.NRGBA{R: 180, G: 180, B: 200, A: 255}
+	}
 
 	// Triangle points for the ship in local space (nose up)
-	nose := rotatePoint(vec2{0, -18}, g.shipAngle)
-	left := rotatePoint(vec2{-12, 12}, g.shipAngle)
-	right := rotatePoint(vec2{12, 12}, g.shipAngle)
+	nose := rotatePoint(vec2{0, -18}, ship.angle)
+	left := rotatePoint(vec2{-12, 12}, ship.angle)
+	right := rotatePoint(vec2{12, 12}, ship.angle)
 
 	nose.x += shipCenterX
 	nose.y += shipCenterY
@@ -149,26 +198,26 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 	right.x += shipCenterX
 	right.y += shipCenterY
 
-	ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, color.White)
-	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, color.White)
-	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, color.White)
+	ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, shipColor)
+	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
+	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
 
 	// Draw green velocity vector on top of ship
 	velocityScale := 0.1 // Scale factor for visibility
-	velEndX := shipCenterX + g.shipVel.x*velocityScale
-	velEndY := shipCenterY + g.shipVel.y*velocityScale
+	velEndX := shipCenterX + ship.vel.x*velocityScale
+	velEndY := shipCenterY + ship.vel.y*velocityScale
 	ebitenutil.DrawLine(screen, shipCenterX, shipCenterY, velEndX, velEndY, color.NRGBA{R: 0, G: 255, B: 0, A: 255})
 
-	if g.thrustThisFrame {
+	if ship.thrustThisFrame {
 		// Position flame at the back center of the ship (midpoint of left and right back points)
-		flameAnchor := rotatePoint(vec2{0, 12}, g.shipAngle)
+		flameAnchor := rotatePoint(vec2{0, 12}, ship.angle)
 		flameAnchor.x += shipCenterX
 		flameAnchor.y += shipCenterY
 
 		// Flame extends backward from the ship (opposite direction of forward movement)
 		// The back is at y=12, so we extend further back (positive y in local space)
 		flameLength := 28 + rand.Float64()*8
-		flameDir := rotatePoint(vec2{0, 12 + flameLength}, g.shipAngle)
+		flameDir := rotatePoint(vec2{0, 12 + flameLength}, ship.angle)
 		flameDir.x += shipCenterX
 		flameDir.y += shipCenterY
 
@@ -177,43 +226,43 @@ func (g *Game) drawShip(screen *ebiten.Image) {
 	}
 
 	// Draw sideways flames when actively turning (only when input is pressed)
-	if g.turningThisFrame {
-		if g.turnDirection > 0 {
+	if ship.turningThisFrame {
+		if ship.turnDirection > 0 {
 			// Turning right - show flame on right side
-			g.fireThruster(screen, true, shipCenterX, shipCenterY) // right
+			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY) // right
 		} else {
 			// Turning left - show flame on left side
-			g.fireThruster(screen, false, shipCenterX, shipCenterY) // left
+			g.fireThruster(screen, ship, false, shipCenterX, shipCenterY) // left
 		}
 	}
 
 	// Automatically fire rotation cancellation thruster when no turn input but still rotating
-	if !g.turningThisFrame && math.Abs(g.shipAngularVel) > 0.1 {
+	if !ship.turningThisFrame && math.Abs(ship.angularVel) > 0.1 {
 		// Fire thruster on the side that opposes current rotation
-		if g.shipAngularVel > 0 {
+		if ship.angularVel > 0 {
 			// Rotating right, fire left thruster to counter
-			g.fireThruster(screen, false, shipCenterX, shipCenterY) // left
+			g.fireThruster(screen, ship, false, shipCenterX, shipCenterY) // left
 		} else {
 			// Rotating left, fire right thruster to counter
-			g.fireThruster(screen, true, shipCenterX, shipCenterY) // right
+			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY) // right
 		}
 	}
 
 	// Draw angular damping thruster when S is pressed (fires on side that opposes rotation)
 	// S key provides stronger/faster damping
-	if g.dampingAngularSpeed && math.Abs(g.shipAngularVel) > 0.1 {
+	if ship.dampingAngularSpeed && math.Abs(ship.angularVel) > 0.1 {
 		// Fire thruster on the side that opposes current rotation
-		if g.shipAngularVel > 0 {
+		if ship.angularVel > 0 {
 			// Rotating right, fire left thruster to counter
-			g.fireThruster(screen, false, shipCenterX, shipCenterY) // left
+			g.fireThruster(screen, ship, false, shipCenterX, shipCenterY) // left
 		} else {
 			// Rotating left, fire right thruster to counter
-			g.fireThruster(screen, true, shipCenterX, shipCenterY) // right
+			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY) // right
 		}
 	}
 }
 
-func (g *Game) fireThruster(screen *ebiten.Image, right bool, centerX, centerY float64) {
+func (g *Game) fireThruster(screen *ebiten.Image, ship *Ship, right bool, centerX, centerY float64) {
 	// right: true for right side, false for left side
 	sideOffset := -10.0 // left side
 	if right {
@@ -224,7 +273,7 @@ func (g *Game) fireThruster(screen *ebiten.Image, right bool, centerX, centerY f
 	sideFlameColor := color.NRGBA{R: 255, G: 120 + uint8(rand.Intn(80)), B: 0, A: 255}
 
 	// Position flame anchor on the side of the ship, near the back
-	flameAnchor := rotatePoint(vec2{sideOffset, 8}, g.shipAngle)
+	flameAnchor := rotatePoint(vec2{sideOffset, 8}, ship.angle)
 	flameAnchor.x += centerX
 	flameAnchor.y += centerY
 
@@ -233,7 +282,7 @@ func (g *Game) fireThruster(screen *ebiten.Image, right bool, centerX, centerY f
 	if right {
 		outwardDirX = 1.0 // right
 	}
-	outwardDir := rotatePoint(vec2{outwardDirX, 0}, g.shipAngle)
+	outwardDir := rotatePoint(vec2{outwardDirX, 0}, ship.angle)
 
 	flameDir := vec2{
 		x: flameAnchor.x + outwardDir.x*sideFlameLength,

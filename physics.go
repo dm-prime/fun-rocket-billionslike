@@ -7,81 +7,81 @@ import (
 )
 
 // updatePhysics applies input-driven forces, rotation, and retrograde logic.
-func (g *Game) updatePhysics(dt float64) {
-	g.thrustThisFrame = false
-	g.turningThisFrame = false
-	g.turnDirection = 0
-	g.dampingAngularSpeed = false
+func (g *Game) updatePhysics(ship *Ship, dt float64) {
+	ship.thrustThisFrame = false
+	ship.turningThisFrame = false
+	ship.turnDirection = 0
+	ship.dampingAngularSpeed = false
 
 	// Apply angular acceleration based on input
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
-		g.shipAngularVel -= angularAccel * dt
-		g.turningThisFrame = true
-		g.turnDirection = -1
+		ship.angularVel -= angularAccel * dt
+		ship.turningThisFrame = true
+		ship.turnDirection = -1
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
-		g.shipAngularVel += angularAccel * dt
-		g.turningThisFrame = true
-		g.turnDirection = 1
+		ship.angularVel += angularAccel * dt
+		ship.turningThisFrame = true
+		ship.turnDirection = 1
 	}
 
 	// Clamp angular velocity to max speed
-	if g.shipAngularVel > maxAngularSpeed {
-		g.shipAngularVel = maxAngularSpeed
+	if ship.angularVel > maxAngularSpeed {
+		ship.angularVel = maxAngularSpeed
 	}
-	if g.shipAngularVel < -maxAngularSpeed {
-		g.shipAngularVel = -maxAngularSpeed
+	if ship.angularVel < -maxAngularSpeed {
+		ship.angularVel = -maxAngularSpeed
 	}
 
 	// Automatically apply angular damping when no turn input (A/D not pressed)
-	if !g.turningThisFrame && math.Abs(g.shipAngularVel) > 0.01 {
+	if !ship.turningThisFrame && math.Abs(ship.angularVel) > 0.01 {
 		// Gradually reduce angular velocity
-		if g.shipAngularVel > 0 {
-			g.shipAngularVel -= angularDampingAccel * dt * 0.5
-			if g.shipAngularVel < 0 {
-				g.shipAngularVel = 0
+		if ship.angularVel > 0 {
+			ship.angularVel -= angularDampingAccel * dt * 0.5
+			if ship.angularVel < 0 {
+				ship.angularVel = 0
 			}
 		} else {
-			g.shipAngularVel += angularDampingAccel * dt * 0.5
-			if g.shipAngularVel > 0 {
-				g.shipAngularVel = 0
+			ship.angularVel += angularDampingAccel * dt * 0.5
+			if ship.angularVel > 0 {
+				ship.angularVel = 0
 			}
 		}
 	}
 
 	// Update ship angle based on angular velocity
-	g.shipAngle += g.shipAngularVel * dt
+	ship.angle += ship.angularVel * dt
 
-	forwardX := math.Sin(g.shipAngle)
-	forwardY := -math.Cos(g.shipAngle)
+	forwardX := math.Sin(ship.angle)
+	forwardY := -math.Cos(ship.angle)
 
 	if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
-		g.shipVel.x += forwardX * thrustAccel * dt
-		g.shipVel.y += forwardY * thrustAccel * dt
-		g.thrustThisFrame = true
+		ship.vel.x += forwardX * thrustAccel * dt
+		ship.vel.y += forwardY * thrustAccel * dt
+		ship.thrustThisFrame = true
 	}
 
 	// S key activates retrograde burn mode
 	if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-		if !g.retrogradeMode {
+		if !ship.retrogradeMode {
 			// Entering retrograde mode - calculate the fastest turn direction
-			g.retrogradeMode = true
-			g.retrogradeTurnDir = g.calculateFastestRetrogradeTurn()
+			ship.retrogradeMode = true
+			ship.retrogradeTurnDir = g.calculateFastestRetrogradeTurn(ship)
 		}
 		// Execute retrograde burn maneuver
-		if g.retrogradeMode {
-			g.executeRetrogradeBurn(dt)
+		if ship.retrogradeMode {
+			g.executeRetrogradeBurn(ship, dt)
 		}
 	} else {
 		// S key not held - immediately cancel retrograde mode
-		if g.retrogradeMode {
-			g.retrogradeMode = false
-			g.retrogradeTurnDir = 0
+		if ship.retrogradeMode {
+			ship.retrogradeMode = false
+			ship.retrogradeTurnDir = 0
 		}
 	}
 
-	g.shipPos.x += g.shipVel.x * dt
-	g.shipPos.y += g.shipVel.y * dt
+	ship.pos.x += ship.vel.x * dt
+	ship.pos.y += ship.vel.y * dt
 }
 
 // normalizeAngle normalizes an angle to the range [-π, π].
@@ -123,19 +123,19 @@ func estimateTurnTime(targetDist, currentAngVel, accel float64) float64 {
 }
 
 // calculateFastestRetrogradeTurn determines which direction to turn for fastest retrograde alignment.
-func (g *Game) calculateFastestRetrogradeTurn() float64 {
-	speed := math.Hypot(g.shipVel.x, g.shipVel.y)
+func (g *Game) calculateFastestRetrogradeTurn(ship *Ship) float64 {
+	speed := math.Hypot(ship.vel.x, ship.vel.y)
 	if speed < 5.0 {
 		return 0
 	}
 
 	// Calculate retrograde angle (opposite to velocity)
 	// Ship forward is (sin(angle), -cos(angle))
-	targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
-	angleDiff := normalizeAngle(targetAngle - g.shipAngle)
+	targetAngle := math.Atan2(-ship.vel.x, ship.vel.y)
+	angleDiff := normalizeAngle(targetAngle - ship.angle)
 
 	// Calculate time for short path vs long path
-	shortTime := estimateTurnTime(angleDiff, g.shipAngularVel, angularAccel)
+	shortTime := estimateTurnTime(angleDiff, ship.angularVel, angularAccel)
 
 	var longDist float64
 	if angleDiff > 0 {
@@ -143,7 +143,7 @@ func (g *Game) calculateFastestRetrogradeTurn() float64 {
 	} else {
 		longDist = angleDiff + 2*math.Pi
 	}
-	longTime := estimateTurnTime(longDist, g.shipAngularVel, angularAccel)
+	longTime := estimateTurnTime(longDist, ship.angularVel, angularAccel)
 
 	// Choose the faster direction
 	if shortTime <= longTime {
@@ -159,57 +159,57 @@ func (g *Game) calculateFastestRetrogradeTurn() float64 {
 }
 
 // executeRetrogradeBurn handles the retrograde burn maneuver each frame.
-func (g *Game) executeRetrogradeBurn(dt float64) {
-	speed := math.Hypot(g.shipVel.x, g.shipVel.y)
+func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
+	speed := math.Hypot(ship.vel.x, ship.vel.y)
 
 	// Check if velocity is killed
 	if speed < 2.0 {
-		g.retrogradeMode = false
-		g.retrogradeTurnDir = 0
+		ship.retrogradeMode = false
+		ship.retrogradeTurnDir = 0
 		return
 	}
 
 	// Always recalculate target angle each frame based on current velocity
-	targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
-	angleDiff := normalizeAngle(targetAngle - g.shipAngle)
+	targetAngle := math.Atan2(-ship.vel.x, ship.vel.y)
+	angleDiff := normalizeAngle(targetAngle - ship.angle)
 
 	// Continuously align against speed - always turn towards retrograde direction
-	g.turningThisFrame = true
-	g.dampingAngularSpeed = true
+	ship.turningThisFrame = true
+	ship.dampingAngularSpeed = true
 
 	// Determine turn direction based on angle difference
 	if math.Abs(angleDiff) > 0.01 { // Small threshold to avoid jitter
 		// Determine which direction to turn (shortest path)
 		if angleDiff > 0 {
-			g.retrogradeTurnDir = 1.0 // turn right
+			ship.retrogradeTurnDir = 1.0 // turn right
 		} else {
-			g.retrogradeTurnDir = -1.0 // turn left
+			ship.retrogradeTurnDir = -1.0 // turn left
 		}
-		g.turnDirection = g.retrogradeTurnDir
+		ship.turnDirection = ship.retrogradeTurnDir
 
 		// Apply angular acceleration to turn towards retrograde
-		if g.retrogradeTurnDir > 0 {
-			g.shipAngularVel += angularAccel * dt
+		if ship.retrogradeTurnDir > 0 {
+			ship.angularVel += angularAccel * dt
 		} else {
-			g.shipAngularVel -= angularAccel * dt
+			ship.angularVel -= angularAccel * dt
 		}
 	} else {
 		// Very close to alignment - dampen angular velocity to maintain alignment
-		if math.Abs(g.shipAngularVel) > 0.01 {
-			if g.shipAngularVel > 0 {
-				g.shipAngularVel -= angularDampingAccel * dt
-				g.turnDirection = -1
+		if math.Abs(ship.angularVel) > 0.01 {
+			if ship.angularVel > 0 {
+				ship.angularVel -= angularDampingAccel * dt
+				ship.turnDirection = -1
 			} else {
-				g.shipAngularVel += angularDampingAccel * dt
-				g.turnDirection = 1
+				ship.angularVel += angularDampingAccel * dt
+				ship.turnDirection = 1
 			}
 		}
 	}
 
 	// Always fire main engine while in retrograde mode (continuous alignment + burn)
-	forwardX := math.Sin(g.shipAngle)
-	forwardY := -math.Cos(g.shipAngle)
-	g.shipVel.x += forwardX * thrustAccel * dt
-	g.shipVel.y += forwardY * thrustAccel * dt
-	g.thrustThisFrame = true
+	forwardX := math.Sin(ship.angle)
+	forwardY := -math.Cos(ship.angle)
+	ship.vel.x += forwardX * thrustAccel * dt
+	ship.vel.y += forwardY * thrustAccel * dt
+	ship.thrustThisFrame = true
 }
