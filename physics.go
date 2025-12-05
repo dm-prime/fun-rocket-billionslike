@@ -287,36 +287,38 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 
 	angleDiff := normalizeAngle(targetAngle - npc.angle)
 
-	// === TURN INPUT (like player pressing A/D) ===
+	// === TURN INPUT (PID-lite to avoid angular windup) ===
 
-	turnThreshold := 0.08 // radians - dead zone to prevent jitter
-	if math.Abs(angleDiff) > turnThreshold {
-		npc.turningThisFrame = true
-		if angleDiff > 0 {
-			// Turn right
-			npc.angularVel += angularAccel * dt
-			npc.turnDirection = 1
-		} else {
-			// Turn left
-			npc.angularVel -= angularAccel * dt
-			npc.turnDirection = -1
-		}
+	// Desired angular velocity scales with how far off we are; capped so NPCs
+	// don't build huge spin while the target moves.
+	desiredAngVel := clamp(angleDiff*3.2, -maxAngularSpeed*0.6, maxAngularSpeed*0.6)
+	// When nearly aligned, push the target velocity toward zero so we settle.
+	if math.Abs(angleDiff) < 0.25 && math.Abs(desiredAngVel) < 0.3 {
+		desiredAngVel = 0
 	}
 
-	// === AUTO ANGULAR DAMPING (same as player when not pressing A/D) ===
-
-	if !npc.turningThisFrame && math.Abs(npc.angularVel) > 0.01 {
-		if npc.angularVel > 0 {
-			npc.angularVel -= angularDampingAccel * dt * 0.5
-			if npc.angularVel < 0 {
-				npc.angularVel = 0
-			}
-		} else {
-			npc.angularVel += angularDampingAccel * dt * 0.5
-			if npc.angularVel > 0 {
-				npc.angularVel = 0
-			}
+	maxStep := angularAccel * dt
+	angVelError := desiredAngVel - npc.angularVel
+	if math.Abs(angVelError) > 0.0001 {
+		// Accelerate toward the desired angular velocity without overshooting.
+		delta := clamp(angVelError, -maxStep, maxStep)
+		npc.angularVel += delta
+		if delta > 0.0001 {
+			npc.turningThisFrame = true
+			npc.turnDirection = 1
+		} else if delta < -0.0001 {
+			npc.turningThisFrame = true
+			npc.turnDirection = -1
 		}
+	} else {
+		npc.angularVel = desiredAngVel
+	}
+
+	// Extra damping when close to the target heading to kill residual spin.
+	if math.Abs(angleDiff) < 0.06 && math.Abs(npc.angularVel) < 0.12 {
+		npc.angularVel = 0
+		npc.turningThisFrame = false
+		npc.turnDirection = 0
 	}
 
 	// Clamp angular velocity
