@@ -18,7 +18,7 @@ const (
 	angularAccel             = math.Pi * 3 // radians per second^2
 	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
 	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
-	thrustAccel              = 230.0       // pixels per second^2
+	thrustAccel              = 350.0       // pixels per second^2
 	sideThrustAccel          = 77.0        // pixels per second^2 (side thruster acceleration)
 	dustCount                = 70
 	dustBaseSpeed            = 20.0
@@ -26,7 +26,7 @@ const (
 	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
 	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
 	retroBurnAlignWindow     = 8 * math.Pi / 180  // radians, must be within this to burn
-	radarRadius              = 70.0
+	radarRadius              = 200.0
 	radarRange               = 520.0
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
@@ -306,27 +306,23 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 	}
 }
 
-// drawRadar renders a simple orientable radar in the top-right corner showing nearby enemies.
+// drawRadar renders a simple orientable radar centered on the player ship showing nearby enemies.
 func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
-	center := vec2{
-		x: float64(screenWidth) - radarMargin - radarRadius,
-		y: radarMargin + radarRadius,
-	}
+	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
+	center := screenCenter
 
-	// Radar backdrop and crosshair
+	// Radar backdrop
 	drawCircle(screen, center.x, center.y, radarRadius+4, color.NRGBA{R: 10, G: 16, B: 32, A: 230})
 	drawCircle(screen, center.x, center.y, radarRadius, color.NRGBA{R: 24, G: 48, B: 96, A: 255}) // outer ring
-	ebitenutil.DrawLine(screen, center.x-radarRadius, center.y, center.x+radarRadius, center.y, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
-	ebitenutil.DrawLine(screen, center.x, center.y-radarRadius, center.x, center.y+radarRadius, color.NRGBA{R: 50, G: 80, B: 120, A: 255})
 
-	// Player heading marker (shows facing direction relative to fixed-world radar)
+	// Player heading marker (always points up since radar rotates with player view)
 	headingLen := radarRadius - 8
-	headX := center.x + math.Sin(player.angle)*headingLen
-	headY := center.y - math.Cos(player.angle)*headingLen
+	headX := center.x
+	headY := center.y - headingLen
 	ebitenutil.DrawLine(screen, center.x, center.y, headX, headY, color.NRGBA{R: 120, G: 210, B: 255, A: 255})
 	drawCircle(screen, center.x, center.y, 2, color.NRGBA{R: 180, G: 255, B: 200, A: 255})
 
-	// Fixed-world radar (no rotation). +X right, +Y down.
+	// Rotated radar (matches game rotation style). Rotate enemy positions relative to player angle.
 	scale := radarRadius / radarRange
 
 	for i := range g.ships {
@@ -340,15 +336,17 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 		dist := math.Hypot(dx, dy)
 
-		rx := dx * scale
-		ry := dy * scale
+		// Rotate the offset relative to player angle (same as ship rendering)
+		rotated := rotatePoint(vec2{dx, dy}, -player.angle)
+		rx := rotated.x * scale
+		ry := rotated.y * scale
 
 		blipColor := g.colorForFaction(enemy.faction)
 		isOffRadar := dist > radarRange
 		if isOffRadar {
 			// Place on the edge of the radar circle and show distance
-			dirX := dx / dist
-			dirY := dy / dist
+			dirX := rotated.x / dist
+			dirY := rotated.y / dist
 			maxR := radarRadius - 5
 			rx = dirX * maxR
 			ry = dirY * maxR
