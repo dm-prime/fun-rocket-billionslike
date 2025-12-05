@@ -242,57 +242,49 @@ func (g *Game) executeRetrogradeBurn(dt float64) {
 		return
 	}
 
-	// Recalculate target angle each frame
+	// Always recalculate target angle each frame based on current velocity
 	targetAngle := math.Atan2(-g.shipVel.x, g.shipVel.y)
 	angleDiff := normalizeAngle(targetAngle - g.shipAngle)
 
-	// 20 degrees in radians
-	alignmentThreshold := 20.0 * math.Pi / 180.0
+	// Continuously align against speed - always turn towards retrograde direction
+	g.turningThisFrame = true
+	g.dampingAngularSpeed = true
 
-	if math.Abs(angleDiff) > alignmentThreshold {
-		// Still need to align - apply turn in chosen direction
-		g.turningThisFrame = true
+	// Determine turn direction based on angle difference
+	if math.Abs(angleDiff) > 0.01 { // Small threshold to avoid jitter
+		// Determine which direction to turn (shortest path)
+		if angleDiff > 0 {
+			g.retrogradeTurnDir = 1.0 // turn right
+		} else {
+			g.retrogradeTurnDir = -1.0 // turn left
+		}
 		g.turnDirection = g.retrogradeTurnDir
-		g.dampingAngularSpeed = true
 
+		// Apply angular acceleration to turn towards retrograde
 		if g.retrogradeTurnDir > 0 {
 			g.shipAngularVel += angularAccel * dt
 		} else {
 			g.shipAngularVel -= angularAccel * dt
 		}
-
-		// Re-evaluate turn direction if getting close
-		if math.Abs(angleDiff) < math.Pi/2 {
-			newDir := g.calculateFastestRetrogradeTurn()
-			if newDir != 0 && newDir != g.retrogradeTurnDir {
-				g.retrogradeTurnDir = newDir
-			}
-		}
 	} else {
-		// Aligned within 20 degrees - fire main engine!
-		// Dampen angular velocity to stay aligned
-		if math.Abs(g.shipAngularVel) > 0.5 {
-			g.dampingAngularSpeed = true
+		// Very close to alignment - dampen angular velocity to maintain alignment
+		if math.Abs(g.shipAngularVel) > 0.01 {
 			if g.shipAngularVel > 0 {
 				g.shipAngularVel -= angularDampingAccel * dt
-			} else {
-				g.shipAngularVel += angularDampingAccel * dt
-			}
-			g.turningThisFrame = true
-			if g.shipAngularVel > 0 {
 				g.turnDirection = -1
 			} else {
+				g.shipAngularVel += angularDampingAccel * dt
 				g.turnDirection = 1
 			}
 		}
-
-		// Fire main engine
-		forwardX := math.Sin(g.shipAngle)
-		forwardY := -math.Cos(g.shipAngle)
-		g.shipVel.x += forwardX * thrustAccel * dt
-		g.shipVel.y += forwardY * thrustAccel * dt
-		g.thrustThisFrame = true
 	}
+
+	// Always fire main engine while in retrograde mode (continuous alignment + burn)
+	forwardX := math.Sin(g.shipAngle)
+	forwardY := -math.Cos(g.shipAngle)
+	g.shipVel.x += forwardX * thrustAccel * dt
+	g.shipVel.y += forwardY * thrustAccel * dt
+	g.thrustThisFrame = true
 }
 
 func (g *Game) updateStars(dt float64) {
