@@ -221,13 +221,11 @@ func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
 
 // NPC behavior constants
 const (
-	npcDesiredDist      = 120.0       // standoff distance from player
-	npcBrakeDist        = 200.0       // start considering braking here
-	npcMaxApproachVel   = 180.0       // max relative approach velocity
-	npcInterceptLead    = 1.2         // seconds to lead target prediction
-	npcThrustFactor     = 0.7         // NPC thrust multiplier (slightly slower than player)
+	npcDesiredDist      = 100.0       // standoff distance from player
+	npcInterceptLead    = 1.5         // seconds to lead target prediction
+	npcThrustFactor     = 0.85        // NPC thrust multiplier (can almost match player)
 	npcAlignThreshold   = 0.03        // radians, angle considered "aligned"
-	npcBrakeAlignThresh = math.Pi / 8 // must be within this to brake effectively
+	npcBrakeAlignThresh = math.Pi / 6 // must be within this to brake effectively
 )
 
 // updateNPC updates an NPC ship with intelligent pursuit/intercept behavior
@@ -273,19 +271,31 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 
 	// === PHASE 3: Decide behavior mode ===
 
+	// Calculate stopping distance at current closing rate
+	// Using physics: d = v²/(2a) where a is our thrust deceleration
+	brakingAccel := thrustAccel * npcThrustFactor
+	stoppingDist := 0.0
+	if closingRate > 0 {
+		stoppingDist = (closingRate * closingRate) / (2 * brakingAccel)
+	}
+
+	// How far until we reach desired distance?
+	distToTarget := dist - npcDesiredDist
+
 	// Determine what we should be doing
 	shouldBrake := false
 	shouldThrust := false
 	shouldMatchVel := false
 
-	if dist < npcDesiredDist*0.8 {
-		// Very close - match player velocity (formation keep)
+	if dist < npcDesiredDist*1.2 && relSpeed < 50 {
+		// Close and low relative speed - match player velocity (formation keep)
 		shouldMatchVel = true
-	} else if closingRate > npcMaxApproachVel && dist < npcBrakeDist {
-		// Approaching too fast - need to brake
+	} else if closingRate > 20 && stoppingDist > distToTarget*0.7 {
+		// We're closing AND would overshoot - brake
+		// The 0.7 factor gives some margin for the turn time
 		shouldBrake = true
-	} else if dist > npcDesiredDist {
-		// Far away - pursue
+	} else if dist > npcDesiredDist*0.5 {
+		// Not close enough - pursue
 		shouldThrust = true
 	}
 
@@ -381,16 +391,23 @@ func (g *Game) updateNPC(npc *Ship, player *Ship, dt float64) {
 	forwardY := -math.Cos(npc.angle)
 
 	if shouldMatchVel {
-		// Velocity matching mode - gradually match player velocity
+		// Velocity matching mode - smoothly match player velocity
 		velDiffX := player.vel.x - npc.vel.x
 		velDiffY := player.vel.y - npc.vel.y
-		matchRate := 2.0 * dt // how fast to converge
+		velDiffMag := math.Hypot(velDiffX, velDiffY)
 
-		npc.vel.x += velDiffX * matchRate
-		npc.vel.y += velDiffY * matchRate
-
-		// Show thrust if we're actually accelerating
-		if math.Hypot(velDiffX, velDiffY) > 10 {
+		if velDiffMag > 1 {
+			// Apply thrust in direction of velocity difference, capped by our thrust
+			maxDelta := brakingAccel * dt
+			if velDiffMag < maxDelta {
+				// Can reach target velocity this frame
+				npc.vel.x = player.vel.x
+				npc.vel.y = player.vel.y
+			} else {
+				// Apply thrust toward matching velocity
+				npc.vel.x += (velDiffX / velDiffMag) * maxDelta
+				npc.vel.y += (velDiffY / velDiffMag) * maxDelta
+			}
 			npc.thrustThisFrame = true
 		}
 	} else if shouldBrake {
