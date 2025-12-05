@@ -43,6 +43,7 @@ type Ship struct {
 	angle               float64
 	angularVel          float64
 	health              float64
+	faction             string
 	thrustThisFrame     bool
 	turningThisFrame    bool
 	turnDirection       float64 // -1 for left, 1 for right, 0 for none
@@ -60,9 +61,11 @@ type star struct {
 
 // Game holds the minimal state required for a simple arcade-feel spaceship demo.
 type Game struct {
-	ships       []Ship
-	playerIndex int
-	stars       []star
+	ships         []Ship
+	playerIndex   int
+	stars         []star
+	factionColors map[string]color.NRGBA
+	alliances     map[string]map[string]bool
 }
 
 func newGame() *Game {
@@ -71,6 +74,7 @@ func newGame() *Game {
 	g := &Game{
 		stars: make([]star, starCount),
 	}
+	g.initFactions()
 
 	// Create a few ships; index 0 is player, others are passive demo ships.
 	g.ships = []Ship{
@@ -78,18 +82,28 @@ func newGame() *Game {
 			pos:      vec2{screenWidth * 0.5, screenHeight * 0.5},
 			health:   100,
 			isPlayer: true,
+			faction:  "Union",
 		},
 		{
-			pos:    vec2{screenWidth*0.5 + 120, screenHeight*0.5 - 60},
-			angle:  math.Pi * 0.25,
-			vel:    vec2{30, -10},
-			health: 100,
+			pos:     vec2{screenWidth*0.5 + 120, screenHeight*0.5 - 60},
+			angle:   math.Pi * 0.25,
+			vel:     vec2{30, -10},
+			health:  100,
+			faction: "Raiders",
 		},
 		{
-			pos:    vec2{screenWidth*0.5 - 160, screenHeight*0.5 + 90},
-			angle:  -math.Pi * 0.5,
-			vel:    vec2{-20, 25},
-			health: 100,
+			pos:     vec2{screenWidth*0.5 - 160, screenHeight*0.5 + 90},
+			angle:   -math.Pi * 0.5,
+			vel:     vec2{-20, 25},
+			health:  100,
+			faction: "Raiders",
+		},
+		{
+			pos:     vec2{screenWidth*0.5 + 220, screenHeight*0.5 + 40},
+			angle:   math.Pi * 0.15,
+			vel:     vec2{15, 5},
+			health:  100,
+			faction: "Traders", // Allied with the player to support friendly ships later.
 		},
 	}
 	g.playerIndex = 0
@@ -192,7 +206,7 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 	// Draw player brighter; others dimmer.
 	var shipColor color.Color = color.White
 	if !ship.isPlayer {
-		shipColor = color.NRGBA{R: 180, G: 180, B: 200, A: 255}
+		shipColor = g.colorForFaction(ship.faction)
 	}
 
 	// Triangle points for the ship in local space (nose up)
@@ -317,7 +331,8 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			ry *= f
 		}
 
-		drawCircle(screen, center.x+rx, center.y+ry, 3, color.NRGBA{R: 255, G: 90, B: 90, A: 255})
+		blipColor := g.colorForFaction(enemy.faction)
+		drawCircle(screen, center.x+rx, center.y+ry, 3, blipColor)
 	}
 }
 
@@ -334,15 +349,16 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 		minDist float64
 		dir     vec2
 		pos     vec2
+		clr     color.Color
 	}
 	corners := map[string]*cornerStat{}
 
-	drawIndicator := func(pos vec2, dir vec2, dist float64, count int) {
+	drawIndicator := func(pos vec2, dir vec2, dist float64, count int, clr color.Color) {
 		tipX := pos.x + dir.x*indicatorArrowLen*0.6
 		tipY := pos.y + dir.y*indicatorArrowLen*0.6
 		tailX := pos.x - dir.x*indicatorArrowLen*0.4
 		tailY := pos.y - dir.y*indicatorArrowLen*0.4
-		ebitenutil.DrawLine(screen, tailX, tailY, tipX, tipY, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+		ebitenutil.DrawLine(screen, tailX, tailY, tipX, tipY, clr)
 
 		wingAngle := math.Pi / 6
 		sinA := math.Sin(wingAngle)
@@ -356,8 +372,8 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 			y: -dir.x*sinA + dir.y*cosA,
 		}
 		wingLen := indicatorArrowLen * 0.5
-		ebitenutil.DrawLine(screen, tipX, tipY, tipX-leftWing.x*wingLen, tipY-leftWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
-		ebitenutil.DrawLine(screen, tipX, tipY, tipX-rightWing.x*wingLen, tipY-rightWing.y*wingLen, color.NRGBA{R: 255, G: 140, B: 80, A: 255})
+		ebitenutil.DrawLine(screen, tipX, tipY, tipX-leftWing.x*wingLen, tipY-leftWing.y*wingLen, clr)
+		ebitenutil.DrawLine(screen, tipX, tipY, tipX-rightWing.x*wingLen, tipY-rightWing.y*wingLen, clr)
 
 		label := fmt.Sprintf("%.0f", dist)
 		if count > 1 {
@@ -386,6 +402,7 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 			continue
 		}
 		enemy := &g.ships[i]
+		indicatorColor := g.colorForFaction(enemy.faction)
 
 		dx := enemy.pos.x - player.pos.x
 		dy := enemy.pos.y - player.pos.y
@@ -418,6 +435,7 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 					stat.minDist = dist
 					stat.dir = vec2{dirX, dirY}
 					stat.pos = vec2{clampedX, clampedY}
+					stat.clr = indicatorColor
 				}
 			} else {
 				corners[key] = &cornerStat{
@@ -425,16 +443,17 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 					minDist: dist,
 					dir:     vec2{dirX, dirY},
 					pos:     vec2{clampedX, clampedY},
+					clr:     indicatorColor,
 				}
 			}
 			continue
 		}
 
-		drawIndicator(vec2{clampedX, clampedY}, vec2{dirX, dirY}, dist, 1)
+		drawIndicator(vec2{clampedX, clampedY}, vec2{dirX, dirY}, dist, 1, indicatorColor)
 	}
 
 	for _, stat := range corners {
-		drawIndicator(stat.pos, stat.dir, stat.minDist, stat.count)
+		drawIndicator(stat.pos, stat.dir, stat.minDist, stat.count, stat.clr)
 	}
 }
 
