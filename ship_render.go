@@ -9,8 +9,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-// drawShip draws a ship with its thrusters and velocity vector (or predictive trail for player)
-func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2, playerInput ShipInput) {
+// drawShip draws a ship with its thrusters and velocity vector
+func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2) {
 	// Draw player brighter; others dimmer.
 	var shipColor color.Color = color.White
 	if !ship.isPlayer {
@@ -33,18 +33,10 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
 	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
 
-	// For player: draw predictive trail instead of velocity vector
-	if ship.isPlayer {
-		player := ship
-		screenCenter := vec2{shipCenterX, shipCenterY}
-		predictedPositions := g.predictFuturePath(player, playerInput)
-		g.drawPredictiveTrail(screen, predictedPositions, player, screenCenter)
-	} else {
-		// For other ships: draw green velocity vector
-		velEndX := shipCenterX + velRender.x*velocityVectorScale
-		velEndY := shipCenterY + velRender.y*velocityVectorScale
-		ebitenutil.DrawLine(screen, shipCenterX, shipCenterY, velEndX, velEndY, colorVelocityVector)
-	}
+	// Draw green velocity vector for all ships (predictive trail is now in radar)
+	velEndX := shipCenterX + velRender.x*velocityVectorScale
+	velEndY := shipCenterY + velRender.y*velocityVectorScale
+	ebitenutil.DrawLine(screen, shipCenterX, shipCenterY, velEndX, velEndY, colorVelocityVector)
 
 	if ship.thrustThisFrame {
 		// Position flame at the back center of the ship (midpoint of left and right back points)

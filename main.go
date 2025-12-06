@@ -17,6 +17,7 @@ func newGame() *Game {
 		radarTrails:      make(map[int][]RadarTrailPoint),
 		radarTrailTimers: make(map[int]float64),
 		npcStates:        make(map[int]NPCState),
+		npcInputs:        make(map[int]ShipInput),
 	}
 	g.initFactions()
 
@@ -87,6 +88,8 @@ func (g *Game) Update() error {
 		} else {
 			// NPC: generate input from AI state machine
 			input = g.updateNPCStateMachine(ship, player, dt)
+			// Store NPC input for predictive trail rendering
+			g.npcInputs[i] = input
 		}
 
 		// Apply physics using unified system
@@ -114,9 +117,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		drawCircle(screen, screenCenter.x+rot.x, screenCenter.y+rot.y, d.radius, colorDust)
 	}
 
-	// Get current player input for predictive trail
-	playerInput := getPlayerInput()
-
 	for i := range g.ships {
 		ship := &g.ships[i]
 		// Position relative to player so camera is centered on player ship.
@@ -131,7 +131,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			renderAngle = 0
 		}
 		velRender := rotatePoint(vec2{ship.vel.x, ship.vel.y}, -player.angle)
-		g.drawShip(screen, ship, shipScreenX, shipScreenY, renderAngle, velRender, playerInput)
+		g.drawShip(screen, ship, shipScreenX, shipScreenY, renderAngle, velRender)
 	}
 
 	g.drawOffscreenIndicators(screen, player)

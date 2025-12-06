@@ -134,6 +134,11 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 	// Draw player trail
 	g.drawRadarTrail(screen, g.radarTrails[g.playerIndex], colorRadarPlayer, player, center, scale, radarRadius)
 
+	// Draw player predictive trail
+	playerInput := getPlayerInput()
+	playerPredictedPositions := g.predictFuturePath(player, playerInput)
+	g.drawPredictiveTrailInRadar(screen, playerPredictedPositions, player, player, center, scale, radarRadius, colorRadarPlayer)
+
 	// Collect all radar blip data
 	type radarBlip struct {
 		shipIndex      int
@@ -289,7 +294,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			enemy := &g.ships[b.shipIndex]
 
 			// Draw indicators first (so they appear behind the dot)
-			g.drawRadarIndicators(screen, enemy, baseX, baseY, b.blipColor, player, scale, radarRadius)
+			g.drawRadarIndicators(screen, enemy, b.shipIndex, baseX, baseY, b.blipColor, player, scale, radarRadius, center)
 
 			// Draw dot
 			drawCircle(screen, baseX, baseY, radarBlipSize, b.blipColor)
@@ -321,7 +326,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				enemy := &g.ships[b.shipIndex]
 
 				// Draw indicators first (so they appear behind the dot)
-				g.drawRadarIndicators(screen, enemy, dotX, dotY, b.blipColor, player, scale, radarRadius)
+				g.drawRadarIndicators(screen, enemy, b.shipIndex, dotX, dotY, b.blipColor, player, scale, radarRadius, center)
 
 				// Draw dot
 				drawCircle(screen, dotX, dotY, radarBlipSize, b.blipColor)
@@ -366,7 +371,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 }
 
 // drawRadarIndicators draws facing direction, engine burn, and speed vector indicators for an enemy on the radar
-func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64, radarRadius float64) {
+func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, shipIndex int, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64, radarRadius float64, radarCenter vec2) {
 	// Facing direction triangle (smaller version of ship triangle)
 	renderAngle := enemy.angle - player.angle
 	// Triangle points in local space (nose up) - scaled down for radar
@@ -394,20 +399,9 @@ func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, baseX, bas
 		ebitenutil.DrawLine(screen, baseX, baseY, baseX-facingDir.x*flameLen, baseY-facingDir.y*flameLen, colorRadarFlame)
 	}
 
-	// Speed vector (relative to player velocity)
-	velRel := vec2{enemy.vel.x - player.vel.x, enemy.vel.y - player.vel.y}
-	velRender := rotatePoint(velRel, -player.angle)
-	if l := math.Hypot(velRender.x, velRender.y); l > 0.01 {
-		velScale := scale * radarSpeedVectorScale
-		vx := velRender.x * velScale
-		vy := velRender.y * velScale
-		// Clamp speed vector length to avoid clutter
-		maxVelMag := radarRadius * radarSpeedVectorMax
-		if mag := math.Hypot(vx, vy); mag > maxVelMag {
-			f := maxVelMag / mag
-			vx *= f
-			vy *= f
-		}
-		ebitenutil.DrawLine(screen, baseX, baseY, baseX+vx, baseY+vy, colorRadarSpeedVector)
+	// Draw predictive trail instead of speed vector
+	if npcInput, hasInput := g.npcInputs[shipIndex]; hasInput {
+		predictedPositions := g.predictFuturePath(enemy, npcInput)
+		g.drawPredictiveTrailInRadar(screen, predictedPositions, enemy, player, radarCenter, scale, radarRadius, colorRadarSpeedVector)
 	}
 }
