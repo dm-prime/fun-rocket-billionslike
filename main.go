@@ -67,6 +67,9 @@ func newGame() *Game {
 		}
 	}
 
+	// Initialize rock spawn timer
+	g.rockSpawnTimer = 0
+
 	return g
 }
 
@@ -80,6 +83,15 @@ func (g *Game) Update() error {
 	// Update all ships using unified physics system
 	for i := range g.ships {
 		ship := &g.ships[i]
+		
+		// Rocks just drift - no AI or physics updates
+		if g.isRock(ship) {
+			// Rocks only update position based on velocity (no acceleration, no rotation)
+			ship.pos.x += ship.vel.x * dt
+			ship.pos.y += ship.vel.y * dt
+			continue
+		}
+
 		var input ShipInput
 
 		if ship.isPlayer {
@@ -95,6 +107,19 @@ func (g *Game) Update() error {
 		// Apply physics using unified system
 		g.updatePhysics(ship, input, dt)
 	}
+
+	// Check for collisions between player and rocks
+	for i := range g.ships {
+		if g.isRock(&g.ships[i]) {
+			if g.checkCollision(player, &g.ships[i]) {
+				// Collision detected - handle it (for now just detect)
+				// TODO: Add damage or other collision effects
+			}
+		}
+	}
+
+	// Manage rocks: despawn far ones, spawn new ones near path
+	g.manageRocks(player, dt)
 
 	g.updateDust(dt, player)
 
@@ -131,7 +156,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			renderAngle = 0
 		}
 		velRender := rotatePoint(vec2{ship.vel.x, ship.vel.y}, -player.angle)
-		g.drawShip(screen, ship, shipScreenX, shipScreenY, renderAngle, velRender)
+		g.drawShip(screen, ship, shipScreenX, shipScreenY, renderAngle, velRender, player)
 	}
 
 	g.drawOffscreenIndicators(screen, player)

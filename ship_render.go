@@ -10,7 +10,27 @@ import (
 )
 
 // drawShip draws a ship with its thrusters and velocity vector
-func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2) {
+func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2, player *Ship) {
+	// Rocks are drawn as circles, not triangles
+	if g.isRock(ship) {
+		rockColor := g.colorForFaction(ship.faction)
+		
+		// Check if rock is on collision course with player
+		if g.isOnCollisionCourse(player, ship, collisionCourseLookAhead) {
+			// Highlight rock on collision course with bright red and glow effect
+			// Draw outer glow (larger, semi-transparent circle)
+			glowColor := color.NRGBA{R: 255, G: 100, B: 100, A: 128}
+			drawCircle(screen, shipCenterX, shipCenterY, rockRadius+4, glowColor)
+			// Draw main rock in bright red
+			drawCircle(screen, shipCenterX, shipCenterY, rockRadius, colorRockCollision)
+		} else {
+			// Normal rock color
+			drawCircle(screen, shipCenterX, shipCenterY, rockRadius, rockColor)
+		}
+		// Rocks don't have velocity vectors or thrusters
+		return
+	}
+
 	// Draw player brighter; others dimmer.
 	var shipColor color.Color = color.White
 	if !ship.isPlayer {

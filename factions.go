@@ -8,6 +8,7 @@ func (g *Game) initFactions() {
 		"Union":   {R: 180, G: 220, B: 255, A: 255},
 		"Raiders": {R: 220, G: 40, B: 40, A: 255},
 		"Traders": {R: 80, G: 200, B: 120, A: 255},
+		"Rocks":   {R: 120, G: 100, B: 80, A: 255}, // Brown/gray color for rocks
 	}
 
 	g.alliances = make(map[string]map[string]bool)
@@ -53,5 +54,10 @@ func (g *Game) colorForFaction(faction string) color.NRGBA {
 		return c
 	}
 	return color.NRGBA{R: 200, G: 200, B: 200, A: 255}
+}
+
+// isRock checks if a ship is a rock
+func (g *Game) isRock(ship *Ship) bool {
+	return ship.faction == "Rocks"
 }
 

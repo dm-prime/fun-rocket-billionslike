@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"math/rand"
 )
 
 // updatePhysics applies input-driven forces, rotation, and retrograde logic.
@@ -240,4 +241,198 @@ func clamp(v, min, max float64) float64 {
 		return max
 	}
 	return v
+}
+
+// isOnCollisionCourse checks if the player and rock are on a collision course within the look-ahead time
+func (g *Game) isOnCollisionCourse(player *Ship, rock *Ship, lookAheadTime float64) bool {
+	// Get current player input to predict future path
+	playerInput := getPlayerInput()
+
+	// Predict player's future positions
+	playerPositions := g.predictFuturePath(player, playerInput)
+
+	// Rock moves linearly (no acceleration)
+	// Check if any predicted player position intersects with rock's path
+	dt := predictiveTrailUpdateRate
+	steps := int(lookAheadTime / dt)
+	if steps > len(playerPositions)-1 {
+		steps = len(playerPositions) - 1
+	}
+
+	collisionRadius := shipCollisionRadius + rockRadius
+
+	for i := 0; i < steps; i++ {
+		// Predict rock position at this time
+		t := float64(i) * dt
+		rockFuturePos := vec2{
+			x: rock.pos.x + rock.vel.x*t,
+			y: rock.pos.y + rock.vel.y*t,
+		}
+
+		// Check distance between predicted positions
+		dx := playerPositions[i].x - rockFuturePos.x
+		dy := playerPositions[i].y - rockFuturePos.y
+		dist := math.Hypot(dx, dy)
+
+		if dist < collisionRadius {
+			return true
+		}
+	}
+
+	return false
+}
+
+// checkCollision checks if two ships are currently colliding
+func (g *Game) checkCollision(player *Ship, rock *Ship) bool {
+	dx := player.pos.x - rock.pos.x
+	dy := player.pos.y - rock.pos.y
+	dist := math.Hypot(dx, dy)
+	collisionRadius := shipCollisionRadius + rockRadius
+	return dist < collisionRadius
+}
+
+// isNearPlayerPath checks if a position is near the player's predicted path
+func (g *Game) isNearPlayerPath(pos vec2, player *Ship) bool {
+	playerInput := getPlayerInput()
+	playerPath := g.predictFuturePath(player, playerInput)
+
+	// Check distance to any point on the predicted path
+	for _, pathPos := range playerPath {
+		dx := pos.x - pathPos.x
+		dy := pos.y - pathPos.y
+		dist := math.Hypot(dx, dy)
+		if dist < rockPathDistance {
+			return true
+		}
+	}
+
+	// Also check distance to current player position
+	dx := pos.x - player.pos.x
+	dy := pos.y - player.pos.y
+	dist := math.Hypot(dx, dy)
+	return dist < rockPathDistance
+}
+
+// spawnRockNearPath spawns a rock near the player's predicted path
+func (g *Game) spawnRockNearPath(player *Ship) {
+	playerInput := getPlayerInput()
+	playerPath := g.predictFuturePath(player, playerInput)
+
+	if len(playerPath) == 0 {
+		return
+	}
+
+	// Pick a random point along the predicted path (prefer further ahead)
+	pathIndex := rand.Intn(len(playerPath))
+	if len(playerPath) > 5 {
+		// Bias towards spawning ahead (last 2/3 of path)
+		startIdx := len(playerPath) * 2 / 3
+		pathIndex = startIdx + rand.Intn(len(playerPath)-startIdx)
+	}
+
+	spawnPos := playerPath[pathIndex]
+
+	// Add some random offset perpendicular to the path direction
+	// Get direction from previous point (or use player velocity if at start)
+	var dir vec2
+	if pathIndex > 0 {
+		dir = vec2{
+			x: playerPath[pathIndex].x - playerPath[pathIndex-1].x,
+			y: playerPath[pathIndex].y - playerPath[pathIndex-1].y,
+		}
+	} else {
+		dir = vec2{x: player.vel.x, y: player.vel.y}
+	}
+
+	// Normalize direction
+	dirLen := math.Hypot(dir.x, dir.y)
+	if dirLen < 0.1 {
+		// Use a default direction if velocity is too small
+		dir = vec2{x: math.Sin(player.angle), y: -math.Cos(player.angle)}
+		dirLen = 1.0
+	}
+	dir.x /= dirLen
+	dir.y /= dirLen
+
+	// Perpendicular vector (rotate 90 degrees)
+	perp := vec2{x: -dir.y, y: dir.x}
+
+	// Random offset perpendicular to path (within rockPathDistance)
+	offsetDist := (rand.Float64() - 0.5) * rockPathDistance * 0.8
+	spawnPos.x += perp.x * offsetDist
+	spawnPos.y += perp.y * offsetDist
+
+	// Also add some forward/backward offset
+	forwardOffset := (rand.Float64() - 0.5) * rockPathDistance * 0.5
+	spawnPos.x += dir.x * forwardOffset
+	spawnPos.y += dir.y * forwardOffset
+
+	// Check if spawn position is outside view range (only spawn rocks outside visible area)
+	dx := spawnPos.x - player.pos.x
+	dy := spawnPos.y - player.pos.y
+	distFromPlayer := math.Hypot(dx, dy)
+
+	// Only spawn if outside minimum spawn distance (outside view range)
+	if distFromPlayer < rockMinSpawnDistance {
+		return // Don't spawn this rock, it's too close to player
+	}
+
+	// Create rock with small drift velocity
+	rock := Ship{
+		pos: spawnPos,
+		vel: vec2{
+			x: (rand.Float64() - 0.5) * 50.0, // Random drift velocity between -25 and 25 px/s
+			y: (rand.Float64() - 0.5) * 50.0,
+		},
+		angle:      rand.Float64() * 2 * math.Pi, // Random initial rotation
+		angularVel: 0,                            // No rotation
+		health:     100,
+		faction:    "Rocks",
+		isPlayer:   false,
+	}
+
+	g.ships = append(g.ships, rock)
+}
+
+// manageRocks handles spawning and despawning rocks based on player's path
+func (g *Game) manageRocks(player *Ship, dt float64) {
+	// Count current rocks and find ones to remove
+	currentRockCount := 0
+	rocksToRemove := make([]int, 0)
+
+	for i := range g.ships {
+		if g.isRock(&g.ships[i]) {
+			currentRockCount++
+			rock := &g.ships[i]
+
+			// Check distance to player
+			dx := rock.pos.x - player.pos.x
+			dy := rock.pos.y - player.pos.y
+			distToPlayer := math.Hypot(dx, dy)
+
+			// Mark for removal if far from player OR far from player's path
+			if distToPlayer > rockDespawnDistance || !g.isNearPlayerPath(rock.pos, player) {
+				rocksToRemove = append(rocksToRemove, i)
+			}
+		}
+	}
+
+	// Remove rocks in reverse order to maintain indices
+	for i := len(rocksToRemove) - 1; i >= 0; i-- {
+		rockIdx := rocksToRemove[i]
+		// Remove by swapping with last element and truncating
+		lastIdx := len(g.ships) - 1
+		if rockIdx != lastIdx {
+			g.ships[rockIdx] = g.ships[lastIdx]
+		}
+		g.ships = g.ships[:lastIdx]
+		currentRockCount--
+	}
+
+	// Spawn new rocks if below target count
+	g.rockSpawnTimer += dt
+	if currentRockCount < rockCount && g.rockSpawnTimer >= rockSpawnInterval {
+		g.spawnRockNearPath(player)
+		g.rockSpawnTimer = 0
+	}
 }

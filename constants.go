@@ -27,11 +27,19 @@ const (
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
 	indicatorArrowLen        = 18.0
-	radarTrailMaxAge         = 3.0  // seconds
-	radarTrailUpdateInterval = 0.1  // seconds between trail points
-	radarTrailMaxPoints      = 30   // maximum trail points per ship
-	radarStackThreshold      = 10.0 // pixels - dots closer than this will be stacked
-	radarStackSpacing        = 8.0  // pixels - vertical spacing between stacked dots
+	radarTrailMaxAge         = 3.0    // seconds
+	radarTrailUpdateInterval = 0.1    // seconds between trail points
+	radarTrailMaxPoints      = 30     // maximum trail points per ship
+	radarStackThreshold      = 10.0   // pixels - dots closer than this will be stacked
+	radarStackSpacing        = 8.0    // pixels - vertical spacing between stacked dots
+	rockCount                = 50     // target number of rocks to maintain
+	rockRadius               = 12.0   // collision radius for rocks
+	shipCollisionRadius      = 18.0   // collision radius for ships (based on ship geometry)
+	collisionCourseLookAhead = 5.0    // seconds to look ahead for collision course detection
+	rockPathDistance         = 800.0  // distance from player path to spawn/keep rocks
+	rockDespawnDistance      = 1500.0 // distance from player to despawn rocks
+	rockSpawnInterval        = 0.2    // seconds between rock spawn attempts
+	rockMinSpawnDistance     = 600.0  // minimum distance from player to spawn rocks (outside view range)
 )
 
 // Color constants
@@ -45,6 +53,7 @@ var (
 	colorRadarPlayer      = color.NRGBA{R: 180, G: 255, B: 200, A: 255}
 	colorRadarSpeedVector = color.NRGBA{R: 120, G: 220, B: 255, A: 220}
 	colorRadarFlame       = color.NRGBA{R: 255, G: 180, B: 60, A: 255}
+	colorRockCollision    = color.NRGBA{R: 255, G: 100, B: 100, A: 255} // Bright red for rocks on collision course
 )
 
 // Ship geometry constants

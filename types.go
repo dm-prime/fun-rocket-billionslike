@@ -57,6 +57,7 @@ type Game struct {
 	radarTrailTimers map[int]float64           // ship index -> time since last trail point
 	npcStates        map[int]NPCState          // ship index -> NPC state
 	npcInputs        map[int]ShipInput         // ship index -> current NPC input (for predictive trails)
+	rockSpawnTimer   float64                   // timer for rock spawning
 	initialized      bool                      // track if screen size has been initialized
 	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
 }

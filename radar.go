@@ -74,6 +74,11 @@ func (g *Game) updateRadarTrails(dt float64, player *Ship) {
 	for i := range g.ships {
 		ship := &g.ships[i]
 
+		// Skip rocks - they don't have radar trails
+		if g.isRock(ship) {
+			continue
+		}
+
 		// Initialize timer if needed
 		if _, exists := g.radarTrailTimers[i]; !exists {
 			g.radarTrailTimers[i] = 0
@@ -157,6 +162,13 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			continue
 		}
 		enemy := &g.ships[i]
+
+		// For rocks, only show on radar if on collision course
+		if g.isRock(enemy) {
+			if !g.isOnCollisionCourse(player, enemy, collisionCourseLookAhead) {
+				continue // Skip this rock - not on collision course
+			}
+		}
 
 		dx := enemy.pos.x - player.pos.x
 		dy := enemy.pos.y - player.pos.y
@@ -275,10 +287,13 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 		clusters = append(clusters, clust)
 	}
 
-	// Draw trails first (before dots)
+	// Draw trails first (before dots) - skip rocks
 	for i := range g.ships {
 		if i == g.playerIndex {
 			continue
+		}
+		if g.isRock(&g.ships[i]) {
+			continue // Rocks don't have trails
 		}
 		trailColor := g.colorForFaction(g.ships[i].faction)
 		g.drawRadarTrail(screen, g.radarTrails[i], trailColor, player, center, scale, radarRadius)
@@ -293,17 +308,21 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			baseY := center.y + b.ry
 			enemy := &g.ships[b.shipIndex]
 
-			// Draw indicators first (so they appear behind the dot)
-			g.drawRadarIndicators(screen, enemy, b.shipIndex, baseX, baseY, b.blipColor, player, scale, radarRadius, center)
+			// Draw indicators first (so they appear behind the dot) - skip for rocks
+			if !g.isRock(enemy) {
+				g.drawRadarIndicators(screen, enemy, b.shipIndex, baseX, baseY, b.blipColor, player, scale, radarRadius, center)
+			}
 
 			// Draw dot
 			drawCircle(screen, baseX, baseY, radarBlipSize, b.blipColor)
 			ebitenutil.DebugPrintAt(screen, b.label, int(b.labelX), int(b.labelY))
 
-			// Draw state label below distance
-			state := g.getNPCState(b.shipIndex)
-			stateLabel := g.getNPCStateString(state)
-			ebitenutil.DebugPrintAt(screen, stateLabel, int(b.labelX), int(b.labelY)+12)
+			// Draw state label below distance - skip for rocks
+			if !g.isRock(enemy) {
+				state := g.getNPCState(b.shipIndex)
+				stateLabel := g.getNPCStateString(state)
+				ebitenutil.DebugPrintAt(screen, stateLabel, int(b.labelX), int(b.labelY)+12)
+			}
 		} else {
 			// Multiple blips, stack them vertically
 			// Sort by distance (closest first, so it's at the bottom of the stack)
@@ -325,8 +344,10 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				dotX := center.x + clust.centerX
 				enemy := &g.ships[b.shipIndex]
 
-				// Draw indicators first (so they appear behind the dot)
-				g.drawRadarIndicators(screen, enemy, b.shipIndex, dotX, dotY, b.blipColor, player, scale, radarRadius, center)
+				// Draw indicators first (so they appear behind the dot) - skip for rocks
+				if !g.isRock(enemy) {
+					g.drawRadarIndicators(screen, enemy, b.shipIndex, dotX, dotY, b.blipColor, player, scale, radarRadius, center)
+				}
 
 				// Draw dot
 				drawCircle(screen, dotX, dotY, radarBlipSize, b.blipColor)
@@ -361,10 +382,12 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				}
 				ebitenutil.DebugPrintAt(screen, b.label, int(labelX), int(labelY))
 
-				// Draw state label below distance
-				state := g.getNPCState(b.shipIndex)
-				stateLabel := g.getNPCStateString(state)
-				ebitenutil.DebugPrintAt(screen, stateLabel, int(labelX), int(labelY)+12)
+				// Draw state label below distance - skip for rocks
+				if !g.isRock(enemy) {
+					state := g.getNPCState(b.shipIndex)
+					stateLabel := g.getNPCStateString(state)
+					ebitenutil.DebugPrintAt(screen, stateLabel, int(labelX), int(labelY)+12)
+				}
 			}
 		}
 	}
