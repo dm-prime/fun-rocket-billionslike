@@ -188,18 +188,6 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 
 // drawHUD draws the heads-up display with player stats
 func (g *Game) drawHUD(screen *ebiten.Image, player *Ship) {
-	retroStatus := ""
-	if player.retrogradeMode {
-		speed := math.Hypot(player.vel.x, player.vel.y)
-		targetAngle := math.Atan2(-player.vel.x, player.vel.y)
-		angleDiff := math.Abs(normalizeAngle(targetAngle-player.angle)) * 180 / math.Pi
-		if angleDiff > 20 {
-			retroStatus = fmt.Sprintf(" | RETROGRADE: TURNING (%.0f° off)", angleDiff)
-		} else {
-			retroStatus = fmt.Sprintf(" | RETROGRADE: BURNING (speed: %.1f)", speed)
-		}
-	}
-	
 	// Health bar
 	healthPercent := player.health / maxHealth
 	healthColor := color.NRGBA{R: 0, G: 255, B: 0, A: 255} // Green
@@ -208,26 +196,26 @@ func (g *Game) drawHUD(screen *ebiten.Image, player *Ship) {
 	} else if healthPercent < 0.6 {
 		healthColor = color.NRGBA{R: 255, G: 255, B: 0, A: 255} // Yellow
 	}
-	
-	hud := fmt.Sprintf("Wave: %d | Health: %.0f/%.0f | Speed: %0.1f | Angular: %0.2f rad/s%s",
-		g.waveNumber, player.health, maxHealth, math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
+
+	hud := fmt.Sprintf("Wave: %d | Health: %.0f/%.0f | Speed: %0.1f | Angular: %0.2f rad/s",
+		g.waveNumber, player.health, maxHealth, math.Hypot(player.vel.x, player.vel.y), player.angularVel)
 	ebitenutil.DebugPrint(screen, hud)
-	
+
 	// Draw health bar
 	barWidth := 200.0
 	barHeight := 8.0
 	barX := float64(screenWidth) - barWidth - 20
 	barY := 20.0
-	
+
 	// Background bar (red)
 	drawRect(screen, barX, barY, barWidth, barHeight, color.NRGBA{R: 100, G: 0, B: 0, A: 255})
-	
+
 	// Health bar (green/yellow/red based on health)
 	healthWidth := barWidth * healthPercent
 	if healthWidth > 0 {
 		drawRect(screen, barX, barY, healthWidth, barHeight, healthColor)
 	}
-	
+
 	// Border
 	drawRectOutline(screen, barX, barY, barWidth, barHeight, color.White)
 }

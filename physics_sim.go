@@ -75,26 +75,19 @@ func simulatePhysicsStep(state *PhysicsState, input ShipInput, dt float64) {
 	forwardX := math.Sin(state.angle)
 	forwardY := -math.Cos(state.angle)
 
-	// Apply thrust
+	// Apply forward thrust
 	if input.ThrustForward {
 		state.vel.x += forwardX * thrustAccel * dt
 		state.vel.y += forwardY * thrustAccel * dt
 	}
 
-	// Handle retrograde burn
-	if input.RetrogradeBurn {
-		speed := math.Hypot(state.vel.x, state.vel.y)
-		if speed > velocityThreshold {
-			// Apply retrograde burn (side thruster against velocity)
-			velDirX := state.vel.x / speed
-			velDirY := state.vel.y / speed
-			state.vel.x -= velDirX * sideThrustAccel * dt
-			state.vel.y -= velDirY * sideThrustAccel * dt
-		}
+	// Apply reverse thrust (negative main engine thrust)
+	if input.ReverseThrust {
+		state.vel.x -= forwardX * thrustAccel * dt
+		state.vel.y -= forwardY * thrustAccel * dt
 	}
 
 	// Update position
 	state.pos.x += state.vel.x * dt
 	state.pos.y += state.vel.y * dt
 }
-

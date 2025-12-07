@@ -10,10 +10,10 @@ type vec2 struct {
 
 // ShipInput represents the control inputs for a ship
 type ShipInput struct {
-	TurnLeft       bool // Turn left (A/Left arrow)
-	TurnRight      bool // Turn right (D/Right arrow)
-	ThrustForward  bool // Thrust forward (W/Up arrow)
-	RetrogradeBurn bool // Retrograde burn (S/Down arrow)
+	TurnLeft      bool // Turn left (A/Left arrow)
+	TurnRight     bool // Turn right (D/Right arrow)
+	ThrustForward bool // Thrust forward (W/Up arrow)
+	ReverseThrust bool // Reverse thrust (S/Down arrow)
 }
 
 // Ship represents a single spacecraft in the world.
@@ -26,11 +26,10 @@ type Ship struct {
 	health              float64
 	faction             string
 	thrustThisFrame     bool
+	reverseThrustFrame  bool // true when reverse thrusting this frame
 	turningThisFrame    bool
 	turnDirection       float64 // -1 for left, 1 for right, 0 for none
 	dampingAngularSpeed bool    // true when S key is pressed to dampen angular speed
-	retrogradeMode      bool    // true when performing retrograde burn maneuver
-	retrogradeTurnDir   float64 // chosen turn direction for retrograde (-1 or 1)
 	isPlayer            bool
 	turretPoints        []vec2  // turret positions relative to ship center (local space)
 	lastFireTime        float64 // time since last bullet was fired

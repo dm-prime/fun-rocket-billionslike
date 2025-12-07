@@ -49,6 +49,7 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 	velEndY := shipCenterY + velRender.y*velocityVectorScale
 	ebitenutil.DrawLine(screen, shipCenterX, shipCenterY, velEndX, velEndY, colorVelocityVector)
 
+	// Main engine forward thrust
 	if ship.thrustThisFrame {
 		// Position flame at the back center of the ship (midpoint of left and right back points)
 		flameAnchor := rotatePoint(vec2{0, shipBackOffsetY}, renderAngle)
@@ -62,6 +63,23 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 		flameDir.y += shipCenterY
 
 		flameColor := color.NRGBA{R: 255, G: 150 + uint8(rand.Intn(100)), B: 0, A: 255}
+		ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, flameColor)
+	}
+
+	// Main engine reverse thrust (flame at front)
+	if ship.reverseThrustFrame {
+		// Position flame at the front/nose of the ship
+		flameAnchor := rotatePoint(vec2{0, shipNoseOffsetY}, renderAngle)
+		flameAnchor.x += shipCenterX
+		flameAnchor.y += shipCenterY
+
+		// Flame extends forward from the nose (opposite to ship forward direction)
+		flameLength := flameBaseLength + rand.Float64()*flameVarLength
+		flameDir := rotatePoint(vec2{0, shipNoseOffsetY - flameLength}, renderAngle)
+		flameDir.x += shipCenterX
+		flameDir.y += shipCenterY
+
+		flameColor := color.NRGBA{R: 100, G: 150 + uint8(rand.Intn(100)), B: 255, A: 255} // Blue flame for reverse
 		ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, flameColor)
 	}
 
@@ -136,7 +154,7 @@ func (g *Game) fireThruster(screen *ebiten.Image, ship *Ship, right bool, center
 // drawRock draws a rock with collision highlighting if on collision course
 func (g *Game) drawRock(screen *ebiten.Image, rock *Rock, rockCenterX, rockCenterY float64, player *Ship) {
 	rockColor := g.colorForFaction("Rocks")
-	
+
 	// Check if rock is on collision course with player
 	if g.isOnCollisionCourse(player, rock, collisionCourseLookAhead) {
 		// Highlight rock on collision course with bright red and glow effect

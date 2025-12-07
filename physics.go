@@ -6,11 +6,12 @@ import (
 	"math/rand"
 )
 
-// updatePhysics applies input-driven forces, rotation, and retrograde logic.
+// updatePhysics applies input-driven forces and rotation.
 // This function works for ALL ships - player or NPC - using the unified ShipInput interface.
 func (g *Game) updatePhysics(ship *Ship, input ShipInput, dt float64) {
 	// Reset per-frame flags
 	ship.thrustThisFrame = false
+	ship.reverseThrustFrame = false
 	ship.turningThisFrame = false
 	ship.turnDirection = 0
 	ship.dampingAngularSpeed = false
@@ -29,33 +30,11 @@ func (g *Game) updatePhysics(ship *Ship, input ShipInput, dt float64) {
 	if input.ThrustForward {
 		ship.thrustThisFrame = true
 	}
-
-	// Track damping state
-	if input.RetrogradeBurn {
-		ship.dampingAngularSpeed = true
+	if input.ReverseThrust {
+		ship.reverseThrustFrame = true
 	}
 
-	// Handle retrograde mode transitions
-	if input.RetrogradeBurn {
-		if !ship.retrogradeMode {
-			// Entering retrograde mode - calculate the fastest turn direction
-			ship.retrogradeMode = true
-			ship.retrogradeTurnDir = g.calculateFastestRetrogradeTurn(ship)
-		}
-		// Execute retrograde burn maneuver (modifies ship state directly)
-		if ship.retrogradeMode {
-			g.executeRetrogradeBurn(ship, dt)
-			return // Retrograde burn handles all physics
-		}
-	} else {
-		// Retrograde burn not active - immediately cancel retrograde mode
-		if ship.retrogradeMode {
-			ship.retrogradeMode = false
-			ship.retrogradeTurnDir = 0
-		}
-	}
-
-	// Use unified physics simulation for normal flight
+	// Use unified physics simulation
 	state := NewPhysicsStateFromShip(ship)
 	simulatePhysicsStep(&state, input, dt)
 	state.ApplyToShip(ship)
@@ -70,130 +49,6 @@ func normalizeAngle(angle float64) float64 {
 		angle += 2 * math.Pi
 	}
 	return angle
-}
-
-// estimateTurnTime estimates time to turn a given distance considering current angular velocity.
-func estimateTurnTime(targetDist, currentAngVel, accel float64) float64 {
-	if targetDist < 0 {
-		targetDist = -targetDist
-		currentAngVel = -currentAngVel
-	}
-
-	if currentAngVel >= 0 {
-		if currentAngVel > 0 {
-			stopDist := 0.5 * currentAngVel * currentAngVel / accel
-			if stopDist >= targetDist {
-				overshoot := stopDist - targetDist
-				brakeTime := currentAngVel / accel
-				returnTime := math.Sqrt(2*overshoot/accel) * 2
-				return brakeTime + returnTime
-			}
-			remainingDist := targetDist - stopDist
-			return currentAngVel/accel + math.Sqrt(4*remainingDist/accel)
-		}
-		return math.Sqrt(4 * targetDist / accel)
-	}
-	stopTime := -currentAngVel / accel
-	stopDist := 0.5 * currentAngVel * currentAngVel / accel
-	newTargetDist := targetDist + stopDist
-	return stopTime + math.Sqrt(4*newTargetDist/accel)
-}
-
-// calculateFastestRetrogradeTurn determines which direction to turn for fastest retrograde alignment.
-func (g *Game) calculateFastestRetrogradeTurn(ship *Ship) float64 {
-	speed := math.Hypot(ship.vel.x, ship.vel.y)
-	if speed < 5.0 {
-		return 0
-	}
-
-	// Calculate retrograde angle (opposite to velocity)
-	// Ship forward is (sin(angle), -cos(angle))
-	targetAngle := math.Atan2(-ship.vel.x, ship.vel.y)
-	angleDiff := normalizeAngle(targetAngle - ship.angle)
-
-	// Calculate time for short path vs long path
-	shortTime := estimateTurnTime(angleDiff, ship.angularVel, angularAccel)
-
-	var longDist float64
-	if angleDiff > 0 {
-		longDist = angleDiff - 2*math.Pi
-	} else {
-		longDist = angleDiff + 2*math.Pi
-	}
-	longTime := estimateTurnTime(longDist, ship.angularVel, angularAccel)
-
-	// Choose the faster direction
-	if shortTime <= longTime {
-		if angleDiff >= 0 {
-			return 1.0 // turn right
-		}
-		return -1.0 // turn left
-	}
-	if longDist >= 0 {
-		return 1.0
-	}
-	return -1.0
-}
-
-// executeRetrogradeBurn handles the retrograde burn maneuver each frame.
-func (g *Game) executeRetrogradeBurn(ship *Ship, dt float64) {
-	speed := math.Hypot(ship.vel.x, ship.vel.y)
-
-	// Check if velocity is killed
-	if speed < 2.0 {
-		ship.retrogradeMode = false
-		ship.retrogradeTurnDir = 0
-		return
-	}
-
-	// Always recalculate target angle each frame based on current velocity
-	targetAngle := math.Atan2(-ship.vel.x, ship.vel.y)
-	angleDiff := normalizeAngle(targetAngle - ship.angle)
-
-	// Continuously align against speed - always turn towards retrograde direction
-	ship.turningThisFrame = true
-	ship.dampingAngularSpeed = true
-
-	// Determine turn direction based on angle difference
-	if math.Abs(angleDiff) > 0.01 { // Small threshold to avoid jitter
-		// Determine which direction to turn (shortest path)
-		if angleDiff > 0 {
-			ship.retrogradeTurnDir = 1.0 // turn right
-		} else {
-			ship.retrogradeTurnDir = -1.0 // turn left
-		}
-		ship.turnDirection = ship.retrogradeTurnDir
-
-		// Apply angular acceleration to turn towards retrograde
-		if ship.retrogradeTurnDir > 0 {
-			ship.angularVel += angularAccel * dt
-		} else {
-			ship.angularVel -= angularAccel * dt
-		}
-	} else {
-		// Very close to alignment - dampen angular velocity to maintain alignment
-		if math.Abs(ship.angularVel) > 0.01 {
-			if ship.angularVel > 0 {
-				ship.angularVel -= angularDampingAccel * dt
-				ship.turnDirection = -1
-			} else {
-				ship.angularVel += angularDampingAccel * dt
-				ship.turnDirection = 1
-			}
-		}
-	}
-
-	// Always apply side thruster acceleration directly against current velocity
-	// regardless of ship orientation
-	if speed > 0.01 { // Avoid division by zero
-		// Normalize velocity vector to get direction
-		velDirX := ship.vel.x / speed
-		velDirY := ship.vel.y / speed
-		// Apply acceleration opposite to velocity (retrograde direction)
-		ship.vel.x -= velDirX * sideThrustAccel * dt
-		ship.vel.y -= velDirY * sideThrustAccel * dt
-		ship.thrustThisFrame = true
-	}
 }
 
 // NPC behavior constants (shared with npc_ai.go)
