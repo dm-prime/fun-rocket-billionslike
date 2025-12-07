@@ -13,12 +13,14 @@ func newGame() *Game {
 	rand.Seed(time.Now().UnixNano())
 
 	g := &Game{
+		ships:            make(map[EntityID]*Ship),
+		rocks:            make(map[EntityID]*Rock),
+		bullets:          make(map[EntityID]*Bullet),
 		dust:             make([]dust, dustCount),
-		bullets:          make([]Bullet, 0),
-		radarTrails:      make(map[int][]RadarTrailPoint),
-		radarTrailTimers: make(map[int]float64),
-		npcStates:        make(map[int]NPCState),
-		npcInputs:        make(map[int]ShipInput),
+		radarTrails:      make(map[EntityID][]RadarTrailPoint),
+		radarTrailTimers: make(map[EntityID]float64),
+		npcStates:        make(map[EntityID]NPCState),
+		npcInputs:        make(map[EntityID]ShipInput),
 		gameTime:         0,
 		gameOver:         false,
 		prevRestartKey:   false,
@@ -28,43 +30,47 @@ func newGame() *Game {
 	}
 	g.initFactions()
 
-	// Create a few ships; index 0 is player, others are passive demo ships.
-	g.ships = []Ship{
-		{
-			pos:      vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5},
-			health:   100,
-			isPlayer: true,
-			faction:  "Union",
-		},
-		{
-			pos:     vec2{float64(screenWidth)*0.5 + 120, float64(screenHeight)*0.5 - 60},
-			angle:   math.Pi * 0.25,
-			vel:     vec2{30, -10},
-			health:  100,
-			faction: "Raiders",
-		},
-		{
-			pos:     vec2{float64(screenWidth)*0.5 - 160, float64(screenHeight)*0.5 + 90},
-			angle:   -math.Pi * 0.5,
-			vel:     vec2{-20, 25},
-			health:  100,
-			faction: "Raiders",
-		},
-		{
-			pos:     vec2{float64(screenWidth)*0.5 + 220, float64(screenHeight)*0.5 + 40},
-			angle:   math.Pi * 0.15,
-			vel:     vec2{15, 5},
-			health:  100,
-			faction: "Traders", // Allied with the player to support friendly ships later.
-		},
-	}
-	g.playerIndex = 0
+	// Create player ship
+	playerShip := NewShip(
+		vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5},
+		vec2{0, 0},
+		0,
+		"Union",
+		true,
+	)
+	g.ships[playerShip.ID()] = playerShip
+	g.playerID = playerShip.ID()
+	g.initTurretPoints(playerShip)
 
-	// Initialize turret points for all ships
-	for i := range g.ships {
-		if !g.isRock(&g.ships[i]) {
-			g.initTurretPoints(&g.ships[i])
-		}
+	// Create a few demo NPC ships
+	demoShips := []*Ship{
+		NewShip(
+			vec2{float64(screenWidth)*0.5 + 120, float64(screenHeight)*0.5 - 60},
+			vec2{30, -10},
+			math.Pi*0.25,
+			"Raiders",
+			false,
+		),
+		NewShip(
+			vec2{float64(screenWidth)*0.5 - 160, float64(screenHeight)*0.5 + 90},
+			vec2{-20, 25},
+			-math.Pi*0.5,
+			"Raiders",
+			false,
+		),
+		NewShip(
+			vec2{float64(screenWidth)*0.5 + 220, float64(screenHeight)*0.5 + 40},
+			vec2{15, 5},
+			math.Pi*0.15,
+			"Traders",
+			false,
+		),
+	}
+
+	// Add demo ships and initialize turrets
+	for _, ship := range demoShips {
+		g.ships[ship.ID()] = ship
+		g.initTurretPoints(ship)
 	}
 
 	// Seed dust in a square around the player so rotated views stay filled.
@@ -73,8 +79,8 @@ func newGame() *Game {
 	for i := range g.dust {
 		g.dust[i] = dust{
 			pos: vec2{
-				x: g.ships[g.playerIndex].pos.x + rand.Float64()*initialSpan - halfSpan,
-				y: g.ships[g.playerIndex].pos.y + rand.Float64()*initialSpan - halfSpan,
+				x: playerShip.pos.x + rand.Float64()*initialSpan - halfSpan,
+				y: playerShip.pos.y + rand.Float64()*initialSpan - halfSpan,
 			},
 			speed:  0.5 + rand.Float64()*1.0, // Speed multiplier from 0.5x to 1.5x
 			radius: 1,
@@ -83,7 +89,7 @@ func newGame() *Game {
 
 	// Initialize rock spawn timer
 	g.rockSpawnTimer = 0
-	
+
 	// Initialize wave spawn timer (start first wave after a short delay)
 	g.waveSpawnTimer = waveSpawnInterval * 0.5
 
@@ -97,11 +103,9 @@ func (g *Game) Update() error {
 	g.handleInput()
 
 	// Check if player is dead
-	if g.playerIndex >= 0 && g.playerIndex < len(g.ships) {
-		player := &g.ships[g.playerIndex]
-		if player.health <= 0 && !g.gameOver {
-			g.gameOver = true
-		}
+	player := g.PlayerShip()
+	if player != nil && player.health <= 0 && !g.gameOver {
+		g.gameOver = true
 	}
 
 	// Don't update game state when game over (except input handling)
@@ -109,22 +113,16 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	player := &g.ships[g.playerIndex]
+	if player == nil {
+		// Player ship doesn't exist - game over
+		g.gameOver = true
+		return nil
+	}
 
 	// Update all ships using unified physics system
-	for i := range g.ships {
-		ship := &g.ships[i]
-		
+	for id, ship := range g.ships {
 		// Skip dead ships (they'll be removed later)
 		if ship.health <= 0 {
-			continue
-		}
-		
-		// Rocks just drift - no AI or physics updates
-		if g.isRock(ship) {
-			// Rocks only update position based on velocity (no acceleration, no rotation)
-			ship.pos.x += ship.vel.x * dt
-			ship.pos.y += ship.vel.y * dt
 			continue
 		}
 
@@ -139,7 +137,7 @@ func (g *Game) Update() error {
 			// NPC: generate input from AI state machine
 			input = g.updateNPCStateMachine(ship, player, dt)
 			// Store NPC input for predictive trail rendering
-			g.npcInputs[i] = input
+			g.npcInputs[id] = input
 		}
 
 		// Apply physics using unified system
@@ -149,17 +147,24 @@ func (g *Game) Update() error {
 		g.updateTurretFiring(ship, dt)
 	}
 
+	// Update all rocks (just position updates)
+	for _, rock := range g.rocks {
+		if rock.health <= 0 {
+			continue
+		}
+		rock.pos.x += rock.vel.x * dt
+		rock.pos.y += rock.vel.y * dt
+	}
+
 	// Update bullets
 	g.updateBullets(dt)
 
-	// Check for bullet-ship collisions
-	g.checkBulletCollisions(dt)
+	// Check and handle all collisions using unified collision system
+	collisionSys := NewCollisionSystem(g)
+	collisionSys.CheckAndHandleCollisions(dt)
 
-	// Check for ship-ship collisions (including player-rock collisions)
-	g.checkShipCollisions(dt)
-
-	// Remove dead ships
-	g.removeDeadShips()
+	// Remove dead entities
+	g.removeDeadEntities()
 
 	// Manage rocks: despawn far ones, spawn new ones near path
 	g.manageRocks(player, dt)
@@ -184,7 +189,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	player := &g.ships[g.playerIndex]
+	player := g.PlayerShip()
+	if player == nil {
+		return // No player, nothing to draw
+	}
+
 	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
 
 	// Draw dust (already positioned relative to ship movement)
@@ -194,8 +203,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		drawCircle(screen, screenCenter.x+rot.x, screenCenter.y+rot.y, d.radius, colorDust)
 	}
 
-	for i := range g.ships {
-		ship := &g.ships[i]
+	// Draw all ships
+	for _, ship := range g.ships {
 		// Position relative to player so camera is centered on player ship.
 		offsetX := ship.pos.x - player.pos.x
 		offsetY := ship.pos.y - player.pos.y
@@ -209,6 +218,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 		velRender := rotatePoint(vec2{ship.vel.x, ship.vel.y}, -player.angle)
 		g.drawShip(screen, ship, shipScreenX, shipScreenY, renderAngle, velRender, player)
+	}
+
+	// Draw all rocks
+	for _, rock := range g.rocks {
+		offsetX := rock.pos.x - player.pos.x
+		offsetY := rock.pos.y - player.pos.y
+		rotated := rotatePoint(vec2{offsetX, offsetY}, -player.angle)
+		rockScreenX := screenCenter.x + rotated.x
+		rockScreenY := screenCenter.y + rotated.y
+		g.drawRock(screen, rock, rockScreenX, rockScreenY, player)
 	}
 
 	g.drawBullets(screen, player)
@@ -230,17 +249,17 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 // spawnEnemyWaves handles periodic spawning of enemy waves
 func (g *Game) spawnEnemyWaves(player *Ship, dt float64) {
 	g.waveSpawnTimer += dt
-	
+
 	if g.waveSpawnTimer >= waveSpawnInterval {
 		g.waveSpawnTimer = 0
 		g.waveNumber++
-		
+
 		// Calculate number of enemies for this wave (increases over time)
 		numEnemies := enemiesPerWave + int(float64(g.waveNumber)*waveSizeIncrease)
 		if numEnemies > 10 {
 			numEnemies = 10 // Cap at 10 enemies per wave
 		}
-		
+
 		// Spawn enemies around the player
 		for i := 0; i < numEnemies; i++ {
 			g.spawnEnemy(player)
@@ -252,56 +271,55 @@ func (g *Game) spawnEnemyWaves(player *Ship, dt float64) {
 func (g *Game) spawnEnemy(player *Ship) {
 	// Choose a random angle around the player
 	angle := rand.Float64() * 2 * math.Pi
-	
+
 	// Spawn at a distance from player
 	spawnX := player.pos.x + math.Cos(angle)*waveSpawnDistance
 	spawnY := player.pos.y + math.Sin(angle)*waveSpawnDistance
-	
+
 	// Calculate angle toward player
 	dx := player.pos.x - spawnX
 	dy := player.pos.y - spawnY
 	targetAngle := math.Atan2(dx, -dy)
-	
+
 	// Add some random variation to the angle
 	angleVariation := (rand.Float64() - 0.5) * math.Pi * 0.3 // ±27 degrees
 	targetAngle += angleVariation
-	
+
 	// Initial velocity toward player (with some randomness)
 	speed := 50.0 + rand.Float64()*50.0 // 50-100 px/s
 	velX := math.Sin(targetAngle) * speed
 	velY := -math.Cos(targetAngle) * speed
-	
-	// Create enemy ship
-	enemy := Ship{
-		pos:     vec2{x: spawnX, y: spawnY},
-		vel:     vec2{x: velX, y: velY},
-		angle:   targetAngle,
-		health:  maxHealth,
-		faction: "Raiders", // Enemy faction
-		isPlayer: false,
-	}
-	
+
+	// Create enemy ship using factory
+	enemy := NewShip(
+		vec2{x: spawnX, y: spawnY},
+		vec2{x: velX, y: velY},
+		targetAngle,
+		"Raiders", // Enemy faction
+		false,
+	)
+
 	// Initialize turret points
-	g.initTurretPoints(&enemy)
-	
+	g.initTurretPoints(enemy)
+
 	// Add to ships
-	g.ships = append(g.ships, enemy)
-	
+	g.ships[enemy.ID()] = enemy
+
 	// Initialize NPC state for this ship (start in Pursue state)
-	shipIdx := len(g.ships) - 1
-	g.setNPCState(shipIdx, NPCStatePursue)
+	g.setNPCState(enemy.ID(), NPCStatePursue)
 }
 
 // restart resets the game to initial state
 func (g *Game) restart() {
 	// Reset game state by creating a new game
 	newG := newGame()
-	
+
 	// Copy over the new state
 	g.ships = newG.ships
-	g.playerIndex = newG.playerIndex
-	g.dust = newG.dust
+	g.rocks = newG.rocks
 	g.bullets = newG.bullets
+	g.playerID = newG.playerID
+	g.dust = newG.dust
 	g.factionColors = newG.factionColors
 	g.alliances = newG.alliances
 	g.radarTrails = newG.radarTrails

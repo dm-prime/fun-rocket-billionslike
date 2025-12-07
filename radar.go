@@ -71,21 +71,14 @@ func (g *Game) drawRadarTrail(screen *ebiten.Image, trail []RadarTrailPoint, tra
 
 // updateRadarTrails updates the trail points for all ships on the radar
 func (g *Game) updateRadarTrails(dt float64, player *Ship) {
-	for i := range g.ships {
-		ship := &g.ships[i]
-
-		// Skip rocks - they don't have radar trails
-		if g.isRock(ship) {
-			continue
-		}
-
+	for id, ship := range g.ships {
 		// Initialize timer if needed
-		if _, exists := g.radarTrailTimers[i]; !exists {
-			g.radarTrailTimers[i] = 0
+		if _, exists := g.radarTrailTimers[id]; !exists {
+			g.radarTrailTimers[id] = 0
 		}
 
 		// Age existing trail points
-		trail := g.radarTrails[i]
+		trail := g.radarTrails[id]
 		for j := range trail {
 			trail[j].age += dt
 		}
@@ -97,21 +90,21 @@ func (g *Game) updateRadarTrails(dt float64, player *Ship) {
 				newTrail = append(newTrail, point)
 			}
 		}
-		g.radarTrails[i] = newTrail
+		g.radarTrails[id] = newTrail
 
 		// Add new trail point periodically
-		g.radarTrailTimers[i] += dt
-		if g.radarTrailTimers[i] >= radarTrailUpdateInterval {
+		g.radarTrailTimers[id] += dt
+		if g.radarTrailTimers[id] >= radarTrailUpdateInterval {
 			// Add new point with world coordinates
 			newPoint := RadarTrailPoint{pos: ship.pos, age: 0}
-			g.radarTrails[i] = append(g.radarTrails[i], newPoint)
+			g.radarTrails[id] = append(g.radarTrails[id], newPoint)
 
 			// Limit trail length
-			if len(g.radarTrails[i]) > radarTrailMaxPoints {
-				g.radarTrails[i] = g.radarTrails[i][1:]
+			if len(g.radarTrails[id]) > radarTrailMaxPoints {
+				g.radarTrails[id] = g.radarTrails[id][1:]
 			}
 
-			g.radarTrailTimers[i] = 0
+			g.radarTrailTimers[id] = 0
 		}
 	}
 }
@@ -137,7 +130,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 	scale := radarRadius / radarRange
 
 	// Draw player trail
-	g.drawRadarTrail(screen, g.radarTrails[g.playerIndex], colorRadarPlayer, player, center, scale, radarRadius)
+	g.drawRadarTrail(screen, g.radarTrails[g.playerID], colorRadarPlayer, player, center, scale, radarRadius)
 
 	// Draw player predictive trail
 	playerInput := getPlayerInput()
@@ -146,7 +139,8 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 	// Collect all radar blip data
 	type radarBlip struct {
-		shipIndex      int
+		entityID       EntityID
+		isRock         bool
 		rx, ry         float64 // radar coordinates
 		dist           float64
 		blipColor      color.NRGBA
@@ -157,17 +151,11 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 	}
 
 	blips := make([]radarBlip, 0)
-	for i := range g.ships {
-		if i == g.playerIndex {
+	
+	// Add ship blips
+	for id, enemy := range g.ships {
+		if id == g.playerID {
 			continue
-		}
-		enemy := &g.ships[i]
-
-		// For rocks, only show on radar if on collision course
-		if g.isRock(enemy) {
-			if !g.isOnCollisionCourse(player, enemy, collisionCourseLookAhead) {
-				continue // Skip this rock - not on collision course
-			}
 		}
 
 		dx := enemy.pos.x - player.pos.x
@@ -227,7 +215,87 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 		}
 
 		blips = append(blips, radarBlip{
-			shipIndex:  i,
+			entityID:   id,
+			isRock:     false,
+			rx:         rx,
+			ry:         ry,
+			dist:       dist,
+			blipColor:  blipColor,
+			isOffRadar: isOffRadar,
+			dirX:       dirX,
+			dirY:       dirY,
+			labelX:     labelX,
+			labelY:     labelY,
+			label:      label,
+		})
+	}
+	
+	// Add rock blips (only if on collision course)
+	for id, rock := range g.rocks {
+		// Only show on radar if on collision course
+		if !g.isOnCollisionCourse(player, rock, collisionCourseLookAhead) {
+			continue
+		}
+
+		dx := rock.pos.x - player.pos.x
+		dy := rock.pos.y - player.pos.y
+
+		dist := math.Hypot(dx, dy)
+
+		// Rotate the offset relative to player angle (same as ship rendering)
+		rotated := rotatePoint(vec2{dx, dy}, -player.angle)
+		rx := rotated.x * scale
+		ry := rotated.y * scale
+
+		blipColor := g.colorForFaction("Rocks")
+		isOffRadar := dist > radarRange
+		var labelX, labelY, dirX, dirY float64
+		var label string
+
+		if isOffRadar {
+			// Place on the edge of the radar circle and show distance
+			dirX = rotated.x / dist
+			dirY = rotated.y / dist
+			maxR := radarRadius - 5
+			rx = dirX * maxR
+			ry = dirY * maxR
+
+			label = fmt.Sprintf("%.0f", dist)
+			labelX = center.x + rx + dirX*radarOffRadarDist
+			labelY = center.y + ry + dirY*radarOffRadarDist
+			minX := center.x - radarRadius + 6
+			maxX := center.x + radarRadius - 32
+			minY := center.y - radarRadius + 6
+			maxY := center.y + radarRadius - 12
+			if labelX < minX {
+				labelX = minX
+			}
+			if labelX > maxX {
+				labelX = maxX
+			}
+			if labelY < minY {
+				labelY = minY
+			}
+			if labelY > maxY {
+				labelY = maxY
+			}
+		} else {
+			// Clamp to radar edge so distant targets sit on the rim
+			edgeLimit := radarRadius - radarEdgeMargin
+			if edgeDist := math.Hypot(rx, ry); edgeDist > edgeLimit {
+				f := edgeLimit / edgeDist
+				rx *= f
+				ry *= f
+			}
+			// For on-radar blips, show distance label near the dot
+			label = fmt.Sprintf("%.0f", dist)
+			labelX = center.x + rx + radarLabelOffsetX
+			labelY = center.y + ry - radarLabelOffsetY
+		}
+
+		blips = append(blips, radarBlip{
+			entityID:   id,
+			isRock:     true,
 			rx:         rx,
 			ry:         ry,
 			dist:       dist,
@@ -287,16 +355,13 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 		clusters = append(clusters, clust)
 	}
 
-	// Draw trails first (before dots) - skip rocks
-	for i := range g.ships {
-		if i == g.playerIndex {
+	// Draw trails first (before dots) - only for ships, not rocks
+	for id, ship := range g.ships {
+		if id == g.playerID {
 			continue
 		}
-		if g.isRock(&g.ships[i]) {
-			continue // Rocks don't have trails
-		}
-		trailColor := g.colorForFaction(g.ships[i].faction)
-		g.drawRadarTrail(screen, g.radarTrails[i], trailColor, player, center, scale, radarRadius)
+		trailColor := g.colorForFaction(ship.faction)
+		g.drawRadarTrail(screen, g.radarTrails[id], trailColor, player, center, scale, radarRadius)
 	}
 
 	// Draw dots, labels, and indicators with stacking
@@ -306,20 +371,21 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 			b := clust.blips[0]
 			baseX := center.x + b.rx
 			baseY := center.y + b.ry
-			enemy := &g.ships[b.shipIndex]
 
-			// Draw indicators first (so they appear behind the dot) - skip for rocks
-			if !g.isRock(enemy) {
-				g.drawRadarIndicators(screen, enemy, b.shipIndex, baseX, baseY, b.blipColor, player, scale, radarRadius, center)
+			// Draw indicators first (so they appear behind the dot) - only for ships, not rocks
+			if !b.isRock {
+				if ship := g.GetShip(b.entityID); ship != nil {
+					g.drawRadarIndicators(screen, ship, b.entityID, baseX, baseY, b.blipColor, player, scale, radarRadius, center)
+				}
 			}
 
 			// Draw dot
 			drawCircle(screen, baseX, baseY, radarBlipSize, b.blipColor)
 			ebitenutil.DebugPrintAt(screen, b.label, int(b.labelX), int(b.labelY))
 
-			// Draw state label below distance - skip for rocks
-			if !g.isRock(enemy) {
-				state := g.getNPCState(b.shipIndex)
+			// Draw state label below distance - only for ships, not rocks
+			if !b.isRock {
+				state := g.getNPCState(b.entityID)
 				stateLabel := g.getNPCStateString(state)
 				ebitenutil.DebugPrintAt(screen, stateLabel, int(b.labelX), int(b.labelY)+12)
 			}
@@ -342,11 +408,12 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 
 				// For stacked dots, keep X at cluster center, adjust Y
 				dotX := center.x + clust.centerX
-				enemy := &g.ships[b.shipIndex]
 
-				// Draw indicators first (so they appear behind the dot) - skip for rocks
-				if !g.isRock(enemy) {
-					g.drawRadarIndicators(screen, enemy, b.shipIndex, dotX, dotY, b.blipColor, player, scale, radarRadius, center)
+				// Draw indicators first (so they appear behind the dot) - only for ships, not rocks
+				if !b.isRock {
+					if ship := g.GetShip(b.entityID); ship != nil {
+						g.drawRadarIndicators(screen, ship, b.entityID, dotX, dotY, b.blipColor, player, scale, radarRadius, center)
+					}
 				}
 
 				// Draw dot
@@ -382,9 +449,9 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 				}
 				ebitenutil.DebugPrintAt(screen, b.label, int(labelX), int(labelY))
 
-				// Draw state label below distance - skip for rocks
-				if !g.isRock(enemy) {
-					state := g.getNPCState(b.shipIndex)
+				// Draw state label below distance - only for ships, not rocks
+				if !b.isRock {
+					state := g.getNPCState(b.entityID)
 					stateLabel := g.getNPCStateString(state)
 					ebitenutil.DebugPrintAt(screen, stateLabel, int(labelX), int(labelY)+12)
 				}
@@ -394,7 +461,7 @@ func (g *Game) drawRadar(screen *ebiten.Image, player *Ship) {
 }
 
 // drawRadarIndicators draws facing direction, engine burn, and speed vector indicators for an enemy on the radar
-func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, shipIndex int, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64, radarRadius float64, radarCenter vec2) {
+func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, entityID EntityID, baseX, baseY float64, blipColor color.NRGBA, player *Ship, scale float64, radarRadius float64, radarCenter vec2) {
 	// Facing direction triangle (smaller version of ship triangle)
 	renderAngle := enemy.angle - player.angle
 	// Triangle points in local space (nose up) - scaled down for radar
@@ -423,7 +490,7 @@ func (g *Game) drawRadarIndicators(screen *ebiten.Image, enemy *Ship, shipIndex 
 	}
 
 	// Draw predictive trail instead of speed vector
-	if npcInput, hasInput := g.npcInputs[shipIndex]; hasInput {
+	if npcInput, hasInput := g.npcInputs[entityID]; hasInput {
 		predictedPositions := g.predictFuturePath(enemy, npcInput)
 		g.drawPredictiveTrailInRadar(screen, predictedPositions, enemy, player, radarCenter, scale, radarRadius, colorRadarSpeedVector)
 	}

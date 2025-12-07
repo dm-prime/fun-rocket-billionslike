@@ -70,15 +70,69 @@ func (g *Game) drawOffscreenIndicators(screen *ebiten.Image, player *Ship) {
 		ebitenutil.DebugPrintAt(screen, label, int(labelX), int(labelY))
 	}
 
-	for i := range g.ships {
-		if i == g.playerIndex {
+	// Draw indicators for ships
+	for id, enemy := range g.ships {
+		if id == g.playerID {
 			continue
 		}
-		enemy := &g.ships[i]
 		indicatorColor := g.colorForFaction(enemy.faction)
 
 		dx := enemy.pos.x - player.pos.x
 		dy := enemy.pos.y - player.pos.y
+		dist := math.Hypot(dx, dy)
+		if dist < 1 {
+			continue
+		}
+
+		// Rotate world around player so player stays upright.
+		rot := rotatePoint(vec2{dx, dy}, -player.angle)
+		screenX := screenCenter.x + rot.x
+		screenY := screenCenter.y + rot.y
+
+		// If on-screen, skip indicator.
+		if screenX >= 0 && screenX <= float64(screenWidth) && screenY >= 0 && screenY <= float64(screenHeight) {
+			continue
+		}
+
+		// Clamp to edge with margin.
+		clampedX := math.Min(math.Max(screenX, minX), maxX)
+		clampedY := math.Min(math.Max(screenY, minY), maxY)
+
+		dirX := rot.x / math.Hypot(rot.x, rot.y)
+		dirY := rot.y / math.Hypot(rot.x, rot.y)
+
+		isCorner := (clampedX == minX || clampedX == maxX) && (clampedY == minY || clampedY == maxY)
+		if isCorner {
+			key := fmt.Sprintf("%t-%t", clampedX == minX, clampedY == minY) // left/right - top/bottom
+			if stat, ok := corners[key]; ok {
+				stat.count++
+				if dist < stat.minDist {
+					stat.minDist = dist
+					stat.dir = vec2{dirX, dirY}
+					stat.pos = vec2{clampedX, clampedY}
+					stat.clr = indicatorColor
+				}
+			} else {
+				corners[key] = &cornerStat{
+					count:   1,
+					minDist: dist,
+					dir:     vec2{dirX, dirY},
+					pos:     vec2{clampedX, clampedY},
+					clr:     indicatorColor,
+				}
+			}
+			continue
+		}
+
+		drawIndicator(vec2{clampedX, clampedY}, vec2{dirX, dirY}, dist, 1, indicatorColor)
+	}
+
+	// Draw indicators for rocks
+	for _, rock := range g.rocks {
+		indicatorColor := g.colorForFaction("Rocks")
+
+		dx := rock.pos.x - player.pos.x
+		dy := rock.pos.y - player.pos.y
 		dist := math.Hypot(dx, dy)
 		if dist < 1 {
 			continue

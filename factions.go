@@ -56,8 +56,9 @@ func (g *Game) colorForFaction(faction string) color.NRGBA {
 	return color.NRGBA{R: 200, G: 200, B: 200, A: 255}
 }
 
-// isRock checks if a ship is a rock
+// isRock is deprecated - rocks are now a separate type
+// This function is kept for backward compatibility during refactoring
 func (g *Game) isRock(ship *Ship) bool {
-	return ship.faction == "Rocks"
+	return false // Ships are never rocks anymore
 }
 

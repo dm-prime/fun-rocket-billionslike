@@ -14,6 +14,7 @@ var (
 const (
 	angularAccel             = math.Pi * 3 // radians per second^2
 	angularDampingAccel      = math.Pi * 8 // radians per second^2 (for S key)
+	autoDampingMultiplier    = 0.5         // multiplier for automatic angular damping (when no input)
 	maxAngularSpeed          = math.Pi * 4 // maximum angular speed (radians per second)
 	thrustAccel              = 500.0       // pixels per second^2
 	sideThrustAccel          = 77.0        // pixels per second^2 (side thruster acceleration)
@@ -23,6 +24,8 @@ const (
 	retroVelocityStopEpsilon = 5.0                // px/s, consider ship stopped
 	retroMinSpeedForTurn     = 1.0                // px/s, minimum speed to compute heading
 	retroBurnAlignWindow     = 8 * math.Pi / 180  // radians, must be within this to burn
+	angularVelThreshold      = 0.01               // radians/s - minimum angular velocity to consider for damping
+	velocityThreshold        = 0.01               // px/s - minimum velocity to consider for physics
 	radarRange               = 5000
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
@@ -53,11 +56,13 @@ const (
 	homingMissileLifetime    = 5.0         // seconds before homing missile despawns
 	shipCollisionDamage      = 30.0        // damage from ship-ship collisions
 	rockCollisionDamage      = 50.0        // damage from ship-rock collisions
+	collisionImpulse         = 50.0        // impulse strength for collision bounce (px/s per dt)
 	maxHealth                = 100.0       // maximum health for ships
 	waveSpawnInterval        = 8.0         // seconds between enemy waves
 	waveSpawnDistance        = 1200.0      // distance from player to spawn enemies
 	enemiesPerWave           = 3           // number of enemies per wave
 	waveSizeIncrease         = 0.1         // increase enemies per wave over time (multiplier)
+	distanceThreshold        = 0.1         // minimum distance to avoid division by zero
 )
 
 // Color constants

@@ -37,22 +37,22 @@ const (
 )
 
 // getNPCState gets the current state for an NPC
-func (g *Game) getNPCState(shipIndex int) NPCState {
+func (g *Game) getNPCState(entityID EntityID) NPCState {
 	if g.npcStates == nil {
-		g.npcStates = make(map[int]NPCState)
+		g.npcStates = make(map[EntityID]NPCState)
 	}
-	if state, ok := g.npcStates[shipIndex]; ok {
+	if state, ok := g.npcStates[entityID]; ok {
 		return state
 	}
 	return NPCStateIdle
 }
 
 // setNPCState sets the state for an NPC
-func (g *Game) setNPCState(shipIndex int, state NPCState) {
+func (g *Game) setNPCState(entityID EntityID, state NPCState) {
 	if g.npcStates == nil {
-		g.npcStates = make(map[int]NPCState)
+		g.npcStates = make(map[EntityID]NPCState)
 	}
-	g.npcStates[shipIndex] = state
+	g.npcStates[entityID] = state
 }
 
 // getNPCStateString returns a human-readable string for the NPC state
@@ -91,20 +91,11 @@ func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) ShipIn
 
 	currentSpeed := math.Hypot(npc.vel.x, npc.vel.y)
 
-	// Find ship index for state tracking
-	shipIndex := -1
-	for i := range g.ships {
-		if &g.ships[i] == npc {
-			shipIndex = i
-			break
-		}
-	}
-	if shipIndex < 0 {
-		return ShipInput{} // Ship not found, skip
-	}
+	// Get NPC entity ID
+	npcID := npc.ID()
 
 	// Get current state
-	currentState := g.getNPCState(shipIndex)
+	currentState := g.getNPCState(npcID)
 
 	// Determine next state using transition table
 	nextState := g.determineNextState(currentState, dist, closingSpeed, relSpeed, currentSpeed)
@@ -115,11 +106,14 @@ func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) ShipIn
 	} else {
 		// State transition occurred
 		if !g.isValidTransition(currentState, nextState, dist, closingSpeed, relSpeed, currentSpeed) {
-			panic(fmt.Sprintf("INVALID STATE TRANSITION: %s -> %s (dist=%.1f, closingSpeed=%.1f, relSpeed=%.1f, currentSpeed=%.1f)",
-				g.getNPCStateString(currentState), g.getNPCStateString(nextState), dist, closingSpeed, relSpeed, currentSpeed))
+			// Log the invalid transition instead of panicking
+			fmt.Printf("WARNING: Invalid state transition: %s -> %s (dist=%.1f, closingSpeed=%.1f, relSpeed=%.1f, currentSpeed=%.1f)\n",
+				g.getNPCStateString(currentState), g.getNPCStateString(nextState), dist, closingSpeed, relSpeed, currentSpeed)
+			// Keep current state instead of crashing
+		} else {
+			g.setNPCState(npcID, nextState)
+			currentState = nextState
 		}
-		g.setNPCState(shipIndex, nextState)
-		currentState = nextState
 	}
 
 	// Execute state behavior and generate input
@@ -135,7 +129,8 @@ func (g *Game) updateNPCStateMachine(npc *Ship, player *Ship, dt float64) ShipIn
 	case NPCStateIdle:
 		return g.executeIdleState(npc, player, dt, dx, dy, dist)
 	default:
-		panic(fmt.Sprintf("UNKNOWN STATE: %d", currentState))
+		fmt.Printf("WARNING: Unknown NPC state: %d, defaulting to Idle\n", currentState)
+		return g.executeIdleState(npc, player, dt, dx, dy, dist)
 	}
 }
 

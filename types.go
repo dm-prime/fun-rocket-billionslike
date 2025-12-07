@@ -18,6 +18,7 @@ type ShipInput struct {
 
 // Ship represents a single spacecraft in the world.
 type Ship struct {
+	id                  EntityID
 	pos                 vec2
 	vel                 vec2
 	angle               float64
@@ -35,16 +36,101 @@ type Ship struct {
 	lastFireTime        float64 // time since last bullet was fired
 }
 
+// ID returns the entity ID of the ship
+func (s *Ship) ID() EntityID {
+	return s.id
+}
+
+// Position returns the position of the ship
+func (s *Ship) Position() vec2 {
+	return s.pos
+}
+
+// IsAlive returns true if the ship has health remaining
+func (s *Ship) IsAlive() bool {
+	return s.health > 0
+}
+
+// CollisionRadius returns the collision radius for the ship
+func (s *Ship) CollisionRadius() float64 {
+	return shipCollisionRadius
+}
+
+// OnCollision handles collision response for ships
+func (s *Ship) OnCollision(other Entity, damage float64) {
+	s.health -= damage
+	if s.health < 0 {
+		s.health = 0
+	}
+}
+
+// Rock represents a space rock obstacle
+type Rock struct {
+	id     EntityID
+	pos    vec2
+	vel    vec2
+	angle  float64
+	health float64
+}
+
+// ID returns the entity ID of the rock
+func (r *Rock) ID() EntityID {
+	return r.id
+}
+
+// Position returns the position of the rock
+func (r *Rock) Position() vec2 {
+	return r.pos
+}
+
+// IsAlive returns true if the rock has health remaining
+func (r *Rock) IsAlive() bool {
+	return r.health > 0
+}
+
+// CollisionRadius returns the collision radius for the rock
+func (r *Rock) CollisionRadius() float64 {
+	return rockRadius
+}
+
+// OnCollision handles collision response for rocks
+func (r *Rock) OnCollision(other Entity, damage float64) {
+	r.health -= damage
+	if r.health < 0 {
+		r.health = 0
+	}
+}
+
 // Bullet represents a projectile fired from a ship's turret
 type Bullet struct {
-	pos         vec2    // world position
-	vel         vec2    // velocity vector
-	age         float64 // age in seconds
-	faction     string  // faction that fired the bullet
-	shipIdx     int     // index of ship that fired it
-	isHoming    bool    // true if this is a homing missile
-	targetIdx   int     // index of target ship (for homing missiles)
-	damage      float64 // damage this bullet deals on hit
+	id       EntityID // unique ID for this bullet
+	pos      vec2     // world position
+	vel      vec2     // velocity vector
+	age      float64  // age in seconds
+	faction  string   // faction that fired the bullet
+	ownerID  EntityID // ID of entity that fired it
+	isHoming bool     // true if this is a homing missile
+	targetID EntityID // ID of target entity (for homing missiles)
+	damage   float64  // damage this bullet deals on hit
+}
+
+// ID returns the entity ID of the bullet
+func (b *Bullet) ID() EntityID {
+	return b.id
+}
+
+// Position returns the position of the bullet
+func (b *Bullet) Position() vec2 {
+	return b.pos
+}
+
+// IsAlive returns true if the bullet hasn't expired
+func (b *Bullet) IsAlive() bool {
+	lifetime := bulletLifetime
+	if b.isHoming {
+		lifetime = homingMissileLifetime
+	}
+	return b.age < lifetime
 }
 
 // dust represents a single dust particle
@@ -62,23 +148,63 @@ type RadarTrailPoint struct {
 
 // Game holds the minimal state required for a simple arcade-feel spaceship demo.
 type Game struct {
-	ships            []Ship
-	playerIndex      int
-	dust             []dust
-	bullets          []Bullet
-	factionColors    map[string]color.NRGBA
-	alliances        map[string]map[string]bool
-	radarTrails      map[int][]RadarTrailPoint // ship index -> trail points
-	radarTrailTimers map[int]float64           // ship index -> time since last trail point
-	npcStates        map[int]NPCState          // ship index -> NPC state
-	npcInputs        map[int]ShipInput         // ship index -> current NPC input (for predictive trails)
-	rockSpawnTimer   float64                   // timer for rock spawning
-	gameTime         float64                   // total game time in seconds
-	initialized      bool                      // track if screen size has been initialized
-	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
-	gameOver         bool                      // true when player is dead
-	prevRestartKey   bool                      // track previous R key state for restart
-	prevSpaceKey     bool                      // track previous Space key state for shooting
-	waveSpawnTimer   float64                   // timer for enemy wave spawning
-	waveNumber       int                       // current wave number
+	ships            map[EntityID]*Ship             // all ships by ID
+	rocks            map[EntityID]*Rock             // all rocks by ID
+	bullets          map[EntityID]*Bullet           // all bullets by ID
+	playerID         EntityID                       // ID of the player's ship
+	dust             []dust                         // dust particles for visual effect
+	factionColors    map[string]color.NRGBA         // faction color mapping
+	alliances        map[string]map[string]bool     // faction alliance relationships
+	radarTrails      map[EntityID][]RadarTrailPoint // entity ID -> trail points
+	radarTrailTimers map[EntityID]float64           // entity ID -> time since last trail point
+	npcStates        map[EntityID]NPCState          // entity ID -> NPC state
+	npcInputs        map[EntityID]ShipInput         // entity ID -> current NPC input (for predictive trails)
+	rockSpawnTimer   float64                        // timer for rock spawning
+	gameTime         float64                        // total game time in seconds
+	initialized      bool                           // track if screen size has been initialized
+	prevAltEnter     bool                           // track previous Alt+Enter state for toggle
+	gameOver         bool                           // true when player is dead
+	prevRestartKey   bool                           // track previous R key state for restart
+	prevSpaceKey     bool                           // track previous Space key state for shooting
+	waveSpawnTimer   float64                        // timer for enemy wave spawning
+	waveNumber       int                            // current wave number
+}
+
+// GetShip retrieves a ship by ID, returning nil if not found
+func (g *Game) GetShip(id EntityID) *Ship {
+	return g.ships[id]
+}
+
+// GetRock retrieves a rock by ID, returning nil if not found
+func (g *Game) GetRock(id EntityID) *Rock {
+	return g.rocks[id]
+}
+
+// GetBullet retrieves a bullet by ID, returning nil if not found
+func (g *Game) GetBullet(id EntityID) *Bullet {
+	return g.bullets[id]
+}
+
+// PlayerShip returns the player's ship, or nil if not found
+func (g *Game) PlayerShip() *Ship {
+	return g.ships[g.playerID]
+}
+
+// RemoveShip removes a ship and cleans up all associated state
+func (g *Game) RemoveShip(id EntityID) {
+	delete(g.ships, id)
+	delete(g.radarTrails, id)
+	delete(g.radarTrailTimers, id)
+	delete(g.npcStates, id)
+	delete(g.npcInputs, id)
+}
+
+// RemoveRock removes a rock from the game
+func (g *Game) RemoveRock(id EntityID) {
+	delete(g.rocks, id)
+}
+
+// RemoveBullet removes a bullet from the game
+func (g *Game) RemoveBullet(id EntityID) {
+	delete(g.bullets, id)
 }

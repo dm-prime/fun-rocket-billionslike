@@ -23,7 +23,7 @@ func (g *Game) spawnBullet(ship *Ship, turretIdx int, targetAngle float64) {
 }
 
 // spawnBulletWithTarget creates a bullet or homing missile from a turret point
-func (g *Game) spawnBulletWithTarget(ship *Ship, turretIdx int, targetAngle float64, target *Ship, isHoming bool) {
+func (g *Game) spawnBulletWithTarget(ship *Ship, turretIdx int, targetAngle float64, target Entity, isHoming bool) {
 	if turretIdx < 0 || turretIdx >= len(ship.turretPoints) {
 		return
 	}
@@ -34,24 +34,13 @@ func (g *Game) spawnBulletWithTarget(ship *Ship, turretIdx int, targetAngle floa
 	turretWorld.x += ship.pos.x
 	turretWorld.y += ship.pos.y
 
-	// Find ship index
-	shipIdx := -1
-	for i := range g.ships {
-		if &g.ships[i] == ship {
-			shipIdx = i
-			break
-		}
-	}
+	// Get ship ID
+	shipID := ship.ID()
 
-	// Find target index if homing
-	targetIdx := -1
+	// Get target ID if homing
+	var targetID EntityID = InvalidEntityID
 	if isHoming && target != nil {
-		for i := range g.ships {
-			if &g.ships[i] == target {
-				targetIdx = i
-				break
-			}
-		}
+		targetID = target.ID()
 	}
 
 	var velX, velY float64
@@ -73,43 +62,54 @@ func (g *Game) spawnBulletWithTarget(ship *Ship, turretIdx int, targetAngle floa
 	velX += ship.vel.x
 	velY += ship.vel.y
 
-	bullet := Bullet{
-		pos:       turretWorld,
-		vel:       vec2{x: velX, y: velY},
-		age:       0,
-		faction:   ship.faction,
-		shipIdx:   shipIdx,
-		isHoming:  isHoming,
-		targetIdx: targetIdx,
-		damage:    damage,
-	}
+	bullet := NewBullet(
+		turretWorld,
+		vec2{x: velX, y: velY},
+		ship.faction,
+		shipID,
+		isHoming,
+		targetID,
+		damage,
+	)
 
-	g.bullets = append(g.bullets, bullet)
+	g.bullets[bullet.ID()] = bullet
 }
 
 // updateBullets updates all bullets and removes old ones
 func (g *Game) updateBullets(dt float64) {
 	// Update bullet positions and homing behavior
-	for i := range g.bullets {
-		bullet := &g.bullets[i]
+	for _, bullet := range g.bullets {
 		bullet.age += dt
 
 		// Update homing missiles to track their target
-		if bullet.isHoming && bullet.targetIdx >= 0 && bullet.targetIdx < len(g.ships) {
-			target := &g.ships[bullet.targetIdx]
-			
-			// Check if target is still valid (not dead, not allied)
-			if target.health > 0 && !g.areAllied(bullet.faction, target.faction) {
+		if bullet.isHoming && bullet.targetID != InvalidEntityID {
+			// Try to find target (could be ship or rock)
+			var targetPos vec2
+			var targetAlive bool
+
+			targetShip := g.GetShip(bullet.targetID)
+			if targetShip != nil && targetShip.health > 0 && !g.areAllied(bullet.faction, targetShip.faction) {
+				targetPos = targetShip.pos
+				targetAlive = true
+			} else {
+				targetRock := g.GetRock(bullet.targetID)
+				if targetRock != nil && targetRock.health > 0 {
+					targetPos = targetRock.pos
+					targetAlive = true
+				}
+			}
+
+			if targetAlive {
 				// Calculate direction to target
-				dx := target.pos.x - bullet.pos.x
-				dy := target.pos.y - bullet.pos.y
+				dx := targetPos.x - bullet.pos.x
+				dy := targetPos.y - bullet.pos.y
 				dist := math.Hypot(dx, dy)
-				
+
 				if dist > 0.1 {
 					// Desired direction to target
 					desiredDirX := dx / dist
 					desiredDirY := dy / dist
-					
+
 					// Current velocity direction
 					speed := math.Hypot(bullet.vel.x, bullet.vel.y)
 					if speed < 0.1 {
@@ -117,12 +117,12 @@ func (g *Game) updateBullets(dt float64) {
 					}
 					currentDirX := bullet.vel.x / speed
 					currentDirY := bullet.vel.y / speed
-					
+
 					// Calculate angle difference
 					desiredAngle := math.Atan2(desiredDirX, -desiredDirY)
 					currentAngle := math.Atan2(currentDirX, -currentDirY)
 					angleDiff := normalizeAngle(desiredAngle - currentAngle)
-					
+
 					// Turn towards target (limited by turn rate)
 					maxTurn := homingMissileTurnRate * dt
 					if math.Abs(angleDiff) > maxTurn {
@@ -132,7 +132,7 @@ func (g *Game) updateBullets(dt float64) {
 							angleDiff = -maxTurn
 						}
 					}
-					
+
 					// Apply rotation to velocity
 					newAngle := currentAngle + angleDiff
 					bullet.vel.x = math.Sin(newAngle) * homingMissileSpeed
@@ -141,6 +141,7 @@ func (g *Game) updateBullets(dt float64) {
 			} else {
 				// Target is dead or allied, convert to regular bullet behavior
 				bullet.isHoming = false
+				bullet.targetID = InvalidEntityID
 			}
 		}
 
@@ -148,28 +149,14 @@ func (g *Game) updateBullets(dt float64) {
 		bullet.pos.y += bullet.vel.y * dt
 	}
 
-	// Remove old bullets
-	validBullets := g.bullets[:0]
-	for i := range g.bullets {
-		bullet := &g.bullets[i]
-		lifetime := bulletLifetime
-		if bullet.isHoming {
-			lifetime = homingMissileLifetime
-		}
-		if bullet.age < lifetime {
-			validBullets = append(validBullets, *bullet)
-		}
-	}
-	g.bullets = validBullets
+	// Note: Old bullet removal is now handled in removeDeadEntities()
 }
 
 // drawBullets renders all bullets
 func (g *Game) drawBullets(screen *ebiten.Image, player *Ship) {
 	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
 
-	for i := range g.bullets {
-		bullet := &g.bullets[i]
-		
+	for _, bullet := range g.bullets {
 		// Position relative to player
 		offsetX := bullet.pos.x - player.pos.x
 		offsetY := bullet.pos.y - player.pos.y
@@ -179,7 +166,7 @@ func (g *Game) drawBullets(screen *ebiten.Image, player *Ship) {
 
 		// Get bullet color based on faction
 		bulletColor := g.colorForFaction(bullet.faction)
-		
+
 		// Draw homing missiles larger and with a different visual style
 		if bullet.isHoming {
 			// Draw larger circle for homing missile
@@ -193,16 +180,15 @@ func (g *Game) drawBullets(screen *ebiten.Image, player *Ship) {
 	}
 }
 
-// findNearestEnemy finds the nearest enemy ship for a given ship
-func (g *Game) findNearestEnemy(ship *Ship) *Ship {
-	var nearestEnemy *Ship
+// findNearestEnemy finds the nearest enemy entity (ship or rock) for a given ship
+func (g *Game) findNearestEnemy(ship *Ship) Entity {
+	var nearestEnemy Entity
 	nearestDist := turretRange + 1.0 // Start beyond range
 
-	for i := range g.ships {
-		target := &g.ships[i]
-		
-		// Skip self, rocks, and allies
-		if target == ship || g.isRock(target) || g.areAllied(ship.faction, target.faction) {
+	// Check ships
+	for _, target := range g.ships {
+		// Skip self and allies
+		if target.ID() == ship.ID() || g.areAllied(ship.faction, target.faction) {
 			continue
 		}
 
@@ -211,9 +197,22 @@ func (g *Game) findNearestEnemy(ship *Ship) *Ship {
 		dy := target.pos.y - ship.pos.y
 		dist := math.Hypot(dx, dy)
 
-		if dist < nearestDist {
+		if dist < nearestDist && dist <= turretRange {
 			nearestDist = dist
 			nearestEnemy = target
+		}
+	}
+
+	// Check rocks
+	for _, rock := range g.rocks {
+		// Calculate distance
+		dx := rock.pos.x - ship.pos.x
+		dy := rock.pos.y - ship.pos.y
+		dist := math.Hypot(dx, dy)
+
+		if dist < nearestDist && dist <= turretRange {
+			nearestDist = dist
+			nearestEnemy = rock
 		}
 	}
 
@@ -221,7 +220,7 @@ func (g *Game) findNearestEnemy(ship *Ship) *Ship {
 }
 
 // shouldFireTurret determines if a turret should fire at a target
-func (g *Game) shouldFireTurret(ship *Ship, target *Ship, turretIdx int) bool {
+func (g *Game) shouldFireTurret(ship *Ship, target Entity, turretIdx int) bool {
 	if target == nil {
 		return false
 	}
@@ -238,8 +237,9 @@ func (g *Game) shouldFireTurret(ship *Ship, target *Ship, turretIdx int) bool {
 	turretWorld.y += ship.pos.y
 
 	// Calculate angle to target
-	dx := target.pos.x - turretWorld.x
-	dy := target.pos.y - turretWorld.y
+	targetPos := target.Position()
+	dx := targetPos.x - turretWorld.x
+	dy := targetPos.y - turretWorld.y
 	targetAngle := math.Atan2(dx, -dy)
 
 	// Calculate angle difference from ship's forward direction
@@ -258,14 +258,15 @@ func (g *Game) firePlayerTurrets(player *Ship) {
 
 	// Find nearest enemy to aim at
 	target := g.findNearestEnemy(player)
-	
+
 	var targetAngle float64
 	var useTarget bool
-	
+
 	if target != nil {
 		// Calculate angle to target
-		dx := target.pos.x - player.pos.x
-		dy := target.pos.y - player.pos.y
+		targetPos := target.Position()
+		dx := targetPos.x - player.pos.x
+		dy := targetPos.y - player.pos.y
 		targetAngle = math.Atan2(dx, -dy)
 		useTarget = true
 	} else {
@@ -277,7 +278,7 @@ func (g *Game) firePlayerTurrets(player *Ship) {
 	// Fire turrets - try to fire at target if available, otherwise fire forward
 	for i := range player.turretPoints {
 		canFire := false
-		
+
 		if useTarget {
 			// Check if turret can fire at target (within angle threshold)
 			if g.shouldFireTurret(player, target, i) {
@@ -287,14 +288,10 @@ func (g *Game) firePlayerTurrets(player *Ship) {
 			// No target, always fire forward
 			canFire = true
 		}
-		
+
 		if canFire {
 			// Player fires regular bullets (not homing missiles)
-			var targetShip *Ship = nil
-			if useTarget {
-				targetShip = target
-			}
-			g.spawnBulletWithTarget(player, i, targetAngle, targetShip, false)
+			g.spawnBulletWithTarget(player, i, targetAngle, target, false)
 			player.lastFireTime = g.gameTime
 			break // Only fire one turret per shot to avoid double-firing
 		}
@@ -308,11 +305,6 @@ func (g *Game) updateTurretFiring(ship *Ship, dt float64) {
 		return
 	}
 
-	// Skip rocks
-	if g.isRock(ship) {
-		return
-	}
-
 	// Find nearest enemy
 	target := g.findNearestEnemy(ship)
 	if target == nil {
@@ -320,8 +312,9 @@ func (g *Game) updateTurretFiring(ship *Ship, dt float64) {
 	}
 
 	// Calculate angle to target
-	dx := target.pos.x - ship.pos.x
-	dy := target.pos.y - ship.pos.y
+	targetPos := target.Position()
+	dx := targetPos.x - ship.pos.x
+	dy := targetPos.y - ship.pos.y
 	targetAngle := math.Atan2(dx, -dy)
 
 	// Try to fire each turret
@@ -335,4 +328,3 @@ func (g *Game) updateTurretFiring(ship *Ship, dt float64) {
 		}
 	}
 }
-
