@@ -10,36 +10,56 @@ import (
 // drawShip draws a ship with its thrusters and velocity vector
 func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2, player *Ship) {
 
-	// Draw player brighter; others dimmer.
-	var shipColor color.Color = color.White
-	if !ship.isPlayer {
-		shipColor = g.colorForFaction(ship.faction)
+	// Draw player with sprite, others with vector graphics
+	if ship.isPlayer && playerShipSprite != nil {
+		// Draw player ship sprite
+		op := &ebiten.DrawImageOptions{}
+		
+		// Translate to center the sprite
+		op.GeoM.Translate(-float64(shipSpriteWidth)/2, -float64(shipSpriteHeight)/2)
+		
+		// Rotate
+		op.GeoM.Rotate(renderAngle)
+		
+		// Translate to ship position
+		op.GeoM.Translate(shipCenterX, shipCenterY)
+		
+		screen.DrawImage(playerShipSprite, op)
+	} else {
+		// Draw NPC ships with vector graphics
+		var shipColor color.Color = color.White
+		if !ship.isPlayer {
+			shipColor = g.colorForFaction(ship.faction)
+		}
+
+		// Triangle points for the ship in local space (nose up)
+		nose := rotatePoint(vec2{0, shipNoseOffsetY}, renderAngle)
+		left := rotatePoint(vec2{shipLeftOffsetX, shipLeftOffsetY}, renderAngle)
+		right := rotatePoint(vec2{shipRightOffsetX, shipRightOffsetY}, renderAngle)
+
+		nose.x += shipCenterX
+		nose.y += shipCenterY
+		left.x += shipCenterX
+		left.y += shipCenterY
+		right.x += shipCenterX
+		right.y += shipCenterY
+
+		ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, shipColor)
+		ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
+		ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
 	}
 
-	// Triangle points for the ship in local space (nose up)
-	nose := rotatePoint(vec2{0, shipNoseOffsetY}, renderAngle)
-	left := rotatePoint(vec2{shipLeftOffsetX, shipLeftOffsetY}, renderAngle)
-	right := rotatePoint(vec2{shipRightOffsetX, shipRightOffsetY}, renderAngle)
-
-	nose.x += shipCenterX
-	nose.y += shipCenterY
-	left.x += shipCenterX
-	left.y += shipCenterY
-	right.x += shipCenterX
-	right.y += shipCenterY
-
-	ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, shipColor)
-	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
-	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
-
-	// Draw turret points
-	for _, turretLocal := range ship.turretPoints {
-		turretRotated := rotatePoint(turretLocal, renderAngle)
-		turretX := shipCenterX + turretRotated.x
-		turretY := shipCenterY + turretRotated.y
-		// Draw turret as a small circle
-		turretColor := color.NRGBA{R: 200, G: 200, B: 200, A: 255}
-		drawCircle(screen, turretX, turretY, turretSize, turretColor)
+	// Draw turret points (for all ships, including player)
+	if !ship.isPlayer || playerShipSprite == nil {
+		// Only draw turrets for vector-rendered ships
+		for _, turretLocal := range ship.turretPoints {
+			turretRotated := rotatePoint(turretLocal, renderAngle)
+			turretX := shipCenterX + turretRotated.x
+			turretY := shipCenterY + turretRotated.y
+			// Draw turret as a small circle
+			turretColor := color.NRGBA{R: 200, G: 200, B: 200, A: 255}
+			drawCircle(screen, turretX, turretY, turretSize, turretColor)
+		}
 	}
 
 	// Draw green velocity vector for all ships (predictive trail is now in radar)

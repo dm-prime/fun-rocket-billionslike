@@ -12,6 +12,11 @@ import (
 func newGame() *Game {
 	rand.Seed(time.Now().UnixNano())
 
+	// Initialize sprites
+	if err := initSprites(); err != nil {
+		log.Fatalf("Failed to initialize sprites: %v", err)
+	}
+
 	g := &Game{
 		ships:            make(map[EntityID]*Ship),
 		rocks:            make(map[EntityID]*Rock),

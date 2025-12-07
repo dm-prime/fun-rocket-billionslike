@@ -251,10 +251,7 @@ func (g *Game) shouldFireTurret(ship *Ship, target Entity, turretIdx int) bool {
 
 // firePlayerTurrets handles player turret firing when spacebar is pressed
 func (g *Game) firePlayerTurrets(player *Ship) {
-	// Check if enough time has passed since last shot
-	if g.gameTime-player.lastFireTime < turretFireRate {
-		return
-	}
+	// Fire every frame - no fire rate check
 
 	// Find nearest enemy to aim at
 	target := g.findNearestEnemy(player)
@@ -281,7 +278,17 @@ func (g *Game) firePlayerTurrets(player *Ship) {
 
 		if useTarget {
 			// Check if turret can fire at target (within angle threshold)
-			if g.shouldFireTurret(player, target, i) {
+			// Skip fire rate check for continuous firing
+			turretLocal := player.turretPoints[i]
+			turretWorld := rotatePoint(turretLocal, player.angle)
+			turretWorld.x += player.pos.x
+			turretWorld.y += player.pos.y
+			targetPos := target.Position()
+			dx := targetPos.x - turretWorld.x
+			dy := targetPos.y - turretWorld.y
+			targetAngleCheck := math.Atan2(dx, -dy)
+			angleDiff := normalizeAngle(targetAngleCheck - player.angle)
+			if math.Abs(angleDiff) < turretFireAngleThreshold {
 				canFire = true
 			}
 		} else {

@@ -43,14 +43,8 @@ func (g *Game) handleInput() {
 
 // handlePlayerShooting handles spacebar input for player shooting
 func (g *Game) handlePlayerShooting(player *Ship) {
-	spacePressed := ebiten.IsKeyPressed(ebiten.KeySpace)
-
-	// Fire on key press (not while held)
-	if spacePressed && !g.prevSpaceKey {
-		g.firePlayerTurrets(player)
-	}
-
-	g.prevSpaceKey = spacePressed
+	// Fire every frame
+	g.firePlayerTurrets(player)
 }
 
 // getPlayerInput reads keyboard input and returns ShipInput for the player

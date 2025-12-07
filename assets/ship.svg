@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <!-- Ship pointing upward (nose at top) -->
+  <!-- Center is at 24, 24 -->
+  
+  <!-- Main body triangle -->
+  <polygon points="24,6 12,36 24,30 36,36" 
+           fill="none" 
+           stroke="white" 
+           stroke-width="2" 
+           stroke-linejoin="miter"/>
+  
+  <!-- Cockpit detail -->
+  <circle cx="24" cy="20" r="3" 
+          fill="none" 
+          stroke="white" 
+          stroke-width="1.5"/>
+  
+  <!-- Wing details -->
+  <line x1="16" y1="28" x2="20" y2="32" 
+        stroke="white" 
+        stroke-width="1.5"/>
+  <line x1="32" y1="28" x2="28" y2="32" 
+        stroke="white" 
+        stroke-width="1.5"/>
+  
+  <!-- Turret points (left and right) -->
+  <circle cx="16" cy="32" r="2.5" 
+          fill="none" 
+          stroke="#c8c8c8" 
+          stroke-width="1.5"/>
+  <circle cx="32" cy="32" r="2.5" 
+          fill="none" 
+          stroke="#c8c8c8" 
+          stroke-width="1.5"/>
+</svg>
+
