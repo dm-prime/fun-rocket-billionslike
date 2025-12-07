@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 )
@@ -283,12 +284,273 @@ func (g *Game) isOnCollisionCourse(player *Ship, rock *Ship, lookAheadTime float
 }
 
 // checkCollision checks if two ships are currently colliding
-func (g *Game) checkCollision(player *Ship, rock *Ship) bool {
-	dx := player.pos.x - rock.pos.x
-	dy := player.pos.y - rock.pos.y
+func (g *Game) checkCollision(ship1 *Ship, ship2 *Ship) bool {
+	dx := ship1.pos.x - ship2.pos.x
+	dy := ship1.pos.y - ship2.pos.y
 	dist := math.Hypot(dx, dy)
-	collisionRadius := shipCollisionRadius + rockRadius
+	
+	var radius1, radius2 float64
+	if g.isRock(ship1) {
+		radius1 = rockRadius
+	} else {
+		radius1 = shipCollisionRadius
+	}
+	if g.isRock(ship2) {
+		radius2 = rockRadius
+	} else {
+		radius2 = shipCollisionRadius
+	}
+	
+	collisionRadius := radius1 + radius2
 	return dist < collisionRadius
+}
+
+// checkBulletCollision checks if a bullet is colliding with a ship
+func (g *Game) checkBulletCollision(bullet *Bullet, ship *Ship) bool {
+	dx := bullet.pos.x - ship.pos.x
+	dy := bullet.pos.y - ship.pos.y
+	dist := math.Hypot(dx, dy)
+	
+	var shipRadius float64
+	if g.isRock(ship) {
+		shipRadius = rockRadius
+	} else {
+		shipRadius = shipCollisionRadius
+	}
+	
+	collisionRadius := bulletRadius + shipRadius
+	return dist < collisionRadius
+}
+
+// checkBulletCollisions checks all bullets against all ships and applies damage
+func (g *Game) checkBulletCollisions(dt float64) {
+	bulletsToRemove := make([]int, 0)
+	
+	for i := range g.bullets {
+		bullet := &g.bullets[i]
+		
+		// Skip if bullet was already marked for removal
+		shouldRemove := false
+		for _, idx := range bulletsToRemove {
+			if idx == i {
+				shouldRemove = true
+				break
+			}
+		}
+		if shouldRemove {
+			continue
+		}
+		
+		// Check collision with all ships
+		for j := range g.ships {
+			target := &g.ships[j]
+			
+			// Skip if target is dead
+			if target.health <= 0 {
+				continue
+			}
+			
+			// Skip if bullet was fired by this ship
+			if bullet.shipIdx == j {
+				continue
+			}
+			
+			// Skip if target is allied with bullet's faction
+			if g.areAllied(bullet.faction, target.faction) {
+				continue
+			}
+			
+			// Check collision
+			if g.checkBulletCollision(bullet, target) {
+				// Apply damage
+				target.health -= bullet.damage
+				if target.health < 0 {
+					target.health = 0
+				}
+				
+				// Remove bullet on hit
+				bulletsToRemove = append(bulletsToRemove, i)
+				break // Bullet can only hit one target
+			}
+		}
+	}
+	
+	// Remove bullets that hit targets (in reverse order to maintain indices)
+	for i := len(bulletsToRemove) - 1; i >= 0; i-- {
+		idx := bulletsToRemove[i]
+		if idx < len(g.bullets) {
+			// Remove by swapping with last element
+			lastIdx := len(g.bullets) - 1
+			if idx != lastIdx {
+				g.bullets[idx] = g.bullets[lastIdx]
+			}
+			g.bullets = g.bullets[:lastIdx]
+		}
+	}
+}
+
+// checkShipCollisions checks all ships against each other and applies collision damage
+func (g *Game) checkShipCollisions(dt float64) {
+	// Track collisions to avoid double-processing
+	collisionPairs := make(map[string]bool)
+	
+	for i := range g.ships {
+		ship1 := &g.ships[i]
+		
+		// Skip if dead
+		if ship1.health <= 0 {
+			continue
+		}
+		
+		for j := i + 1; j < len(g.ships); j++ {
+			ship2 := &g.ships[j]
+			
+			// Skip if dead
+			if ship2.health <= 0 {
+				continue
+			}
+			
+			// Create unique key for collision pair
+			key := ""
+			if i < j {
+				key = fmt.Sprintf("%d-%d", i, j)
+			} else {
+				key = fmt.Sprintf("%d-%d", j, i)
+			}
+			
+			// Skip if already processed
+			if collisionPairs[key] {
+				continue
+			}
+			
+			// Check collision
+			if g.checkCollision(ship1, ship2) {
+				collisionPairs[key] = true
+				
+				// Calculate collision damage
+				var damage float64
+				if g.isRock(ship1) || g.isRock(ship2) {
+					// Rock collisions deal more damage
+					damage = rockCollisionDamage
+				} else {
+					// Ship-ship collisions
+					damage = shipCollisionDamage
+				}
+				
+				// Apply damage to both ships
+				ship1.health -= damage
+				if ship1.health < 0 {
+					ship1.health = 0
+				}
+				
+				ship2.health -= damage
+				if ship2.health < 0 {
+					ship2.health = 0
+				}
+				
+				// Apply some velocity change on collision (simple bounce)
+				dx := ship2.pos.x - ship1.pos.x
+				dy := ship2.pos.y - ship1.pos.y
+				dist := math.Hypot(dx, dy)
+				if dist > 0.1 {
+					// Normalize direction
+					dx /= dist
+					dy /= dist
+					
+					// Apply impulse (push ships apart)
+					impulse := 50.0 * dt
+					ship1.vel.x -= dx * impulse
+					ship1.vel.y -= dy * impulse
+					ship2.vel.x += dx * impulse
+					ship2.vel.y += dy * impulse
+				}
+			}
+		}
+	}
+}
+
+// removeDeadShips removes ships with health <= 0 (except player - handle separately)
+func (g *Game) removeDeadShips() {
+	// Build map of old index to new index
+	indexMap := make(map[int]int)
+	validShips := make([]Ship, 0)
+	newIndex := 0
+	
+	for i := range g.ships {
+		ship := &g.ships[i]
+		
+		// Keep player even if dead (for game over handling later)
+		if ship.isPlayer {
+			indexMap[i] = newIndex
+			validShips = append(validShips, *ship)
+			newIndex++
+			continue
+		}
+		
+		// Remove dead ships
+		if ship.health <= 0 {
+			continue
+		}
+		
+		indexMap[i] = newIndex
+		validShips = append(validShips, *ship)
+		newIndex++
+	}
+	
+	// Only update if ships were removed
+	if len(validShips) != len(g.ships) {
+		// Update player index
+		newPlayerIndex := -1
+		for i := range validShips {
+			if validShips[i].isPlayer {
+				newPlayerIndex = i
+				break
+			}
+		}
+		if newPlayerIndex >= 0 {
+			g.playerIndex = newPlayerIndex
+		}
+		
+		// Update bullet ship indices using index map
+		for i := range g.bullets {
+			bullet := &g.bullets[i]
+			if bullet.shipIdx >= 0 {
+				if newIdx, ok := indexMap[bullet.shipIdx]; ok {
+					bullet.shipIdx = newIdx
+				} else {
+					bullet.shipIdx = -1 // Ship was removed
+				}
+			}
+			
+			// Update homing missile target indices
+			if bullet.isHoming && bullet.targetIdx >= 0 {
+				if newIdx, ok := indexMap[bullet.targetIdx]; ok {
+					bullet.targetIdx = newIdx
+				} else {
+					bullet.isHoming = false // Target is dead
+					bullet.targetIdx = -1
+				}
+			}
+		}
+		
+		// Clean up NPC state maps using index map
+		newNPCStates := make(map[int]NPCState)
+		newNPCInputs := make(map[int]ShipInput)
+		for oldIdx, newIdx := range indexMap {
+			if !validShips[newIdx].isPlayer {
+				if oldState, ok := g.npcStates[oldIdx]; ok {
+					newNPCStates[newIdx] = oldState
+				}
+				if oldInput, ok := g.npcInputs[oldIdx]; ok {
+					newNPCInputs[newIdx] = oldInput
+				}
+			}
+		}
+		g.npcStates = newNPCStates
+		g.npcInputs = newNPCInputs
+		
+		g.ships = validShips
+	}
 }
 
 // isNearPlayerPath checks if a position is near the player's predicted path

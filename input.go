@@ -2,8 +2,18 @@ package main
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// handleInput processes input events like fullscreen toggle
+// handleInput processes input events like fullscreen toggle and restart
 func (g *Game) handleInput() {
+	// Handle R key to restart (only when game over)
+	if g.gameOver {
+		restartPressed := ebiten.IsKeyPressed(ebiten.KeyR)
+		if restartPressed && !g.prevRestartKey {
+			g.restart()
+		}
+		g.prevRestartKey = restartPressed
+		return // Don't process other input when game over
+	}
+
 	// Handle Alt+Enter to toggle fullscreen
 	altPressed := ebiten.IsKeyPressed(ebiten.KeyAlt) || ebiten.IsKeyPressed(ebiten.KeyAltLeft) || ebiten.IsKeyPressed(ebiten.KeyAltRight)
 	enterPressed := ebiten.IsKeyPressed(ebiten.KeyEnter)
@@ -29,6 +39,18 @@ func (g *Game) handleInput() {
 		ebiten.SetWindowSize(screenWidth, screenHeight)
 	}
 	g.prevAltEnter = altEnterPressed
+}
+
+// handlePlayerShooting handles spacebar input for player shooting
+func (g *Game) handlePlayerShooting(player *Ship) {
+	spacePressed := ebiten.IsKeyPressed(ebiten.KeySpace)
+
+	// Fire on key press (not while held)
+	if spacePressed && !g.prevSpaceKey {
+		g.firePlayerTurrets(player)
+	}
+
+	g.prevSpaceKey = spacePressed
 }
 
 // getPlayerInput reads keyboard input and returns ShipInput for the player

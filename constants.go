@@ -46,6 +46,14 @@ const (
 	turretFireRate           = 0.5         // seconds between shots per turret
 	turretRange              = 2000.0      // maximum range for turret targeting
 	turretFireAngleThreshold = math.Pi / 6 // 30 degrees - turret can fire if target is within this angle
+	bulletDamage             = 10.0        // damage dealt by regular bullets
+	homingMissileSpeed       = 600.0       // pixels per second (slower than bullets)
+	homingMissileTurnRate    = math.Pi * 2 // radians per second - how fast missiles can turn
+	homingMissileDamage      = 25.0        // damage dealt by homing missiles
+	homingMissileLifetime    = 5.0         // seconds before homing missile despawns
+	shipCollisionDamage      = 30.0        // damage from ship-ship collisions
+	rockCollisionDamage      = 50.0        // damage from ship-rock collisions
+	maxHealth                = 100.0       // maximum health for ships
 )
 
 // Color constants

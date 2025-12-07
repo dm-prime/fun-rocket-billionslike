@@ -145,7 +145,63 @@ func (g *Game) drawHUD(screen *ebiten.Image, player *Ship) {
 			retroStatus = fmt.Sprintf(" | RETROGRADE: BURNING (speed: %.1f)", speed)
 		}
 	}
-	hud := fmt.Sprintf("Speed: %0.1f | Angular: %0.2f rad/s%s",
-		math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
+	
+	// Health bar
+	healthPercent := player.health / maxHealth
+	healthColor := color.NRGBA{R: 0, G: 255, B: 0, A: 255} // Green
+	if healthPercent < 0.3 {
+		healthColor = color.NRGBA{R: 255, G: 0, B: 0, A: 255} // Red
+	} else if healthPercent < 0.6 {
+		healthColor = color.NRGBA{R: 255, G: 255, B: 0, A: 255} // Yellow
+	}
+	
+	hud := fmt.Sprintf("Health: %.0f/%.0f | Speed: %0.1f | Angular: %0.2f rad/s%s",
+		player.health, maxHealth, math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
 	ebitenutil.DebugPrint(screen, hud)
+	
+	// Draw health bar
+	barWidth := 200.0
+	barHeight := 8.0
+	barX := float64(screenWidth) - barWidth - 20
+	barY := 20.0
+	
+	// Background bar (red)
+	drawRect(screen, barX, barY, barWidth, barHeight, color.NRGBA{R: 100, G: 0, B: 0, A: 255})
+	
+	// Health bar (green/yellow/red based on health)
+	healthWidth := barWidth * healthPercent
+	if healthWidth > 0 {
+		drawRect(screen, barX, barY, healthWidth, barHeight, healthColor)
+	}
+	
+	// Border
+	drawRectOutline(screen, barX, barY, barWidth, barHeight, color.White)
+}
+
+// drawGameOver draws the game over screen
+func (g *Game) drawGameOver(screen *ebiten.Image) {
+	screenCenterX := float64(screenWidth) * 0.5
+	screenCenterY := float64(screenHeight) * 0.5
+
+	// Draw semi-transparent overlay
+	overlayColor := color.NRGBA{R: 0, G: 0, B: 0, A: 200}
+	drawRect(screen, 0, 0, float64(screenWidth), float64(screenHeight), overlayColor)
+
+	// Draw "GAME OVER" text
+	gameOverText := "GAME OVER"
+	textX := screenCenterX - 100
+	textY := screenCenterY - 40
+	ebitenutil.DebugPrintAt(screen, gameOverText, int(textX), int(textY))
+
+	// Draw restart instruction
+	restartText := "Press R to Restart"
+	restartX := screenCenterX - 80
+	restartY := screenCenterY + 20
+	ebitenutil.DebugPrintAt(screen, restartText, int(restartX), int(restartY))
+
+	// Draw final stats
+	statsText := fmt.Sprintf("Survived: %.1f seconds", g.gameTime)
+	statsX := screenCenterX - 70
+	statsY := screenCenterY + 50
+	ebitenutil.DebugPrintAt(screen, statsText, int(statsX), int(statsY))
 }

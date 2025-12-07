@@ -28,3 +28,44 @@ func drawCircle(dst *ebiten.Image, cx, cy, radius float64, clr color.Color) {
 		dst.Set(int(x), int(y), clr)
 	}
 }
+
+// drawRect draws a filled rectangle
+func drawRect(dst *ebiten.Image, x, y, width, height float64, clr color.Color) {
+	for py := int(y); py < int(y+height); py++ {
+		for px := int(x); px < int(x+width); px++ {
+			if px >= 0 && px < dst.Bounds().Dx() && py >= 0 && py < dst.Bounds().Dy() {
+				dst.Set(px, py, clr)
+			}
+		}
+	}
+}
+
+// drawRectOutline draws an outlined rectangle
+func drawRectOutline(dst *ebiten.Image, x, y, width, height float64, clr color.Color) {
+	// Top and bottom edges
+	for px := int(x); px <= int(x+width); px++ {
+		if px >= 0 && px < dst.Bounds().Dx() {
+			py := int(y)
+			if py >= 0 && py < dst.Bounds().Dy() {
+				dst.Set(px, py, clr)
+			}
+			py = int(y + height)
+			if py >= 0 && py < dst.Bounds().Dy() {
+				dst.Set(px, py, clr)
+			}
+		}
+	}
+	// Left and right edges
+	for py := int(y); py <= int(y+height); py++ {
+		if py >= 0 && py < dst.Bounds().Dy() {
+			px := int(x)
+			if px >= 0 && px < dst.Bounds().Dx() {
+				dst.Set(px, py, clr)
+			}
+			px = int(x + width)
+			if px >= 0 && px < dst.Bounds().Dx() {
+				dst.Set(px, py, clr)
+			}
+		}
+	}
+}

@@ -20,6 +20,9 @@ func newGame() *Game {
 		npcStates:        make(map[int]NPCState),
 		npcInputs:        make(map[int]ShipInput),
 		gameTime:         0,
+		gameOver:         false,
+		prevRestartKey:   false,
+		prevSpaceKey:     false,
 	}
 	g.initFactions()
 
@@ -88,11 +91,29 @@ func (g *Game) Update() error {
 
 	g.handleInput()
 
+	// Check if player is dead
+	if g.playerIndex >= 0 && g.playerIndex < len(g.ships) {
+		player := &g.ships[g.playerIndex]
+		if player.health <= 0 && !g.gameOver {
+			g.gameOver = true
+		}
+	}
+
+	// Don't update game state when game over (except input handling)
+	if g.gameOver {
+		return nil
+	}
+
 	player := &g.ships[g.playerIndex]
 
 	// Update all ships using unified physics system
 	for i := range g.ships {
 		ship := &g.ships[i]
+		
+		// Skip dead ships (they'll be removed later)
+		if ship.health <= 0 {
+			continue
+		}
 		
 		// Rocks just drift - no AI or physics updates
 		if g.isRock(ship) {
@@ -107,6 +128,8 @@ func (g *Game) Update() error {
 		if ship.isPlayer {
 			// Player: read keyboard input
 			input = getPlayerInput()
+			// Handle player shooting
+			g.handlePlayerShooting(ship)
 		} else {
 			// NPC: generate input from AI state machine
 			input = g.updateNPCStateMachine(ship, player, dt)
@@ -124,15 +147,14 @@ func (g *Game) Update() error {
 	// Update bullets
 	g.updateBullets(dt)
 
-	// Check for collisions between player and rocks
-	for i := range g.ships {
-		if g.isRock(&g.ships[i]) {
-			if g.checkCollision(player, &g.ships[i]) {
-				// Collision detected - handle it (for now just detect)
-				// TODO: Add damage or other collision effects
-			}
-		}
-	}
+	// Check for bullet-ship collisions
+	g.checkBulletCollisions(dt)
+
+	// Check for ship-ship collisions (including player-rock collisions)
+	g.checkShipCollisions(dt)
+
+	// Remove dead ships
+	g.removeDeadShips()
 
 	// Manage rocks: despawn far ones, spawn new ones near path
 	g.manageRocks(player, dt)
@@ -147,6 +169,12 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(colorBackground)
+
+	// Draw game over screen if game is over
+	if g.gameOver {
+		g.drawGameOver(screen)
+		return
+	}
 
 	player := &g.ships[g.playerIndex]
 	screenCenter := vec2{float64(screenWidth) * 0.5, float64(screenHeight) * 0.5}
@@ -189,6 +217,29 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 		g.initialized = true
 	}
 	return screenWidth, screenHeight
+}
+
+// restart resets the game to initial state
+func (g *Game) restart() {
+	// Reset game state by creating a new game
+	newG := newGame()
+	
+	// Copy over the new state
+	g.ships = newG.ships
+	g.playerIndex = newG.playerIndex
+	g.dust = newG.dust
+	g.bullets = newG.bullets
+	g.factionColors = newG.factionColors
+	g.alliances = newG.alliances
+	g.radarTrails = newG.radarTrails
+	g.radarTrailTimers = newG.radarTrailTimers
+	g.npcStates = newG.npcStates
+	g.npcInputs = newG.npcInputs
+	g.rockSpawnTimer = newG.rockSpawnTimer
+	g.gameTime = 0
+	g.gameOver = false
+	g.prevRestartKey = false
+	g.prevSpaceKey = false
 }
 
 func main() {

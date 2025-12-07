@@ -37,11 +37,14 @@ type Ship struct {
 
 // Bullet represents a projectile fired from a ship's turret
 type Bullet struct {
-	pos      vec2    // world position
-	vel      vec2    // velocity vector
-	age      float64 // age in seconds
-	faction  string  // faction that fired the bullet
-	shipIdx  int     // index of ship that fired it
+	pos         vec2    // world position
+	vel         vec2    // velocity vector
+	age         float64 // age in seconds
+	faction     string  // faction that fired the bullet
+	shipIdx     int     // index of ship that fired it
+	isHoming    bool    // true if this is a homing missile
+	targetIdx   int     // index of target ship (for homing missiles)
+	damage      float64 // damage this bullet deals on hit
 }
 
 // dust represents a single dust particle
@@ -73,4 +76,7 @@ type Game struct {
 	gameTime         float64                   // total game time in seconds
 	initialized      bool                      // track if screen size has been initialized
 	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
+	gameOver         bool                      // true when player is dead
+	prevRestartKey   bool                      // track previous R key state for restart
+	prevSpaceKey     bool                      // track previous Space key state for shooting
 }
