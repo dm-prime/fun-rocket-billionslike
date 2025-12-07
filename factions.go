@@ -60,4 +60,3 @@ func (g *Game) colorForFaction(faction string) color.NRGBA {
 func (g *Game) isRock(ship *Ship) bool {
 	return ship.faction == "Rocks"
 }
-

@@ -12,22 +12,46 @@ import (
 // drawShip draws a ship with its thrusters and velocity vector
 func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCenterY float64, renderAngle float64, velRender vec2, player *Ship) {
 	// Rocks are drawn as circles, not triangles
+	// Rocks
 	if g.isRock(ship) {
-		rockColor := g.colorForFaction(ship.faction)
-		
-		// Check if rock is on collision course with player
-		if g.isOnCollisionCourse(player, ship, collisionCourseLookAhead) {
-			// Highlight rock on collision course with bright red and glow effect
-			// Draw outer glow (larger, semi-transparent circle)
-			glowColor := color.NRGBA{R: 255, G: 100, B: 100, A: 128}
-			drawCircle(screen, shipCenterX, shipCenterY, rockRadius+4, glowColor)
-			// Draw main rock in bright red
-			drawCircle(screen, shipCenterX, shipCenterY, rockRadius, colorRockCollision)
+		if g.rockImage != nil {
+			op := &ebiten.DrawImageOptions{}
+			w, h := g.rockImage.Size()
+			// Scale to match rock radius (slightly larger for visual cover)
+			maxDim := math.Max(float64(w), float64(h))
+			scale := (rockRadius * 2.0) / maxDim
+
+			op.GeoM.Translate(-float64(w)/2, -float64(h)/2)
+			op.GeoM.Scale(scale, scale)
+			// Rocks rotate based on their unique ID or just random context if we tracked it,
+			// but for now, we can use their movement angle or just 0 since they don't have angularVel.
+			// Let's just use 0 or a fixed rotation if we had it.
+			// Actually, let's rotate it by time slightly to make it look dynamic?
+			// But rocks are static in orientation in the physics currently.
+			// Let's rotate by its position pseudo-randomly to vary look
+			op.GeoM.Rotate(ship.pos.x*0.01 + ship.pos.y*0.01)
+			op.GeoM.Translate(shipCenterX, shipCenterY)
+
+			// Tint if on collision course
+			if g.isOnCollisionCourse(player, ship, collisionCourseLookAhead) {
+				op.ColorM.Scale(1, 0.5, 0.5, 1) // Red tint
+				// Glow
+				glowColor := color.NRGBA{R: 255, G: 100, B: 100, A: 64}
+				drawCircle(screen, shipCenterX, shipCenterY, rockRadius+6, glowColor)
+			}
+
+			screen.DrawImage(g.rockImage, op)
 		} else {
-			// Normal rock color
-			drawCircle(screen, shipCenterX, shipCenterY, rockRadius, rockColor)
+			// Fallback rendering
+			rockColor := g.colorForFaction(ship.faction)
+			if g.isOnCollisionCourse(player, ship, collisionCourseLookAhead) {
+				glowColor := color.NRGBA{R: 255, G: 100, B: 100, A: 128}
+				drawCircle(screen, shipCenterX, shipCenterY, rockRadius+4, glowColor)
+				drawCircle(screen, shipCenterX, shipCenterY, rockRadius, colorRockCollision)
+			} else {
+				drawCircle(screen, shipCenterX, shipCenterY, rockRadius, rockColor)
+			}
 		}
-		// Rocks don't have velocity vectors or thrusters
 		return
 	}
 
@@ -37,30 +61,63 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 		shipColor = g.colorForFaction(ship.faction)
 	}
 
-	// Triangle points for the ship in local space (nose up)
-	nose := rotatePoint(vec2{0, shipNoseOffsetY}, renderAngle)
-	left := rotatePoint(vec2{shipLeftOffsetX, shipLeftOffsetY}, renderAngle)
-	right := rotatePoint(vec2{shipRightOffsetX, shipRightOffsetY}, renderAngle)
+	// Determine ship image
+	var img *ebiten.Image
+	if ship.isPlayer {
+		img = g.playerImage
+	} else {
+		img = g.enemyImage
+	}
 
-	nose.x += shipCenterX
-	nose.y += shipCenterY
-	left.x += shipCenterX
-	left.y += shipCenterY
-	right.x += shipCenterX
-	right.y += shipCenterY
+	if img != nil {
+		op := &ebiten.DrawImageOptions{}
+		w, h := img.Size()
+		// Scale based on max dimension to ensure proper sizing
+		maxDim := math.Max(float64(w), float64(h))
+		scale := (shipCollisionRadius * 2.5) / maxDim
+		op.GeoM.Translate(-float64(w)/2, -float64(h)/2)
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Rotate(renderAngle)
+		op.GeoM.Translate(shipCenterX, shipCenterY)
 
-	ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, shipColor)
-	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
-	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
+		// Apply faction color tinting (player stays bright, others get faction colors)
+		if !ship.isPlayer {
+			factionColor := g.colorForFaction(ship.faction)
+			// Convert NRGBA to RGB multipliers (0-1 range)
+			op.ColorM.Scale(
+				float64(factionColor.R)/255.0,
+				float64(factionColor.G)/255.0,
+				float64(factionColor.B)/255.0,
+				1.0,
+			)
+		}
 
-	// Draw turret points
-	for _, turretLocal := range ship.turretPoints {
-		turretRotated := rotatePoint(turretLocal, renderAngle)
-		turretX := shipCenterX + turretRotated.x
-		turretY := shipCenterY + turretRotated.y
-		// Draw turret as a small circle
-		turretColor := color.NRGBA{R: 200, G: 200, B: 200, A: 255}
-		drawCircle(screen, turretX, turretY, turretSize, turretColor)
+		screen.DrawImage(img, op)
+	} else {
+		// Fallback vector rendering
+		nose := rotatePoint(vec2{0, shipNoseOffsetY}, renderAngle)
+		left := rotatePoint(vec2{shipLeftOffsetX, shipLeftOffsetY}, renderAngle)
+		right := rotatePoint(vec2{shipRightOffsetX, shipRightOffsetY}, renderAngle)
+
+		nose.x += shipCenterX
+		nose.y += shipCenterY
+		left.x += shipCenterX
+		left.y += shipCenterY
+		right.x += shipCenterX
+		right.y += shipCenterY
+
+		ebitenutil.DrawLine(screen, nose.x, nose.y, left.x, left.y, shipColor)
+		ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
+		ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
+
+		// Draw turret points only in fallback
+		for _, turretLocal := range ship.turretPoints {
+			turretRotated := rotatePoint(turretLocal, renderAngle)
+			turretX := shipCenterX + turretRotated.x
+			turretY := shipCenterY + turretRotated.y
+			turretColor := color.NRGBA{R: 200, G: 200, B: 200, A: 255}
+			drawCircle(screen, turretX, turretY, turretSize, turretColor)
+		}
 	}
 
 	// Draw green velocity vector for all ships (predictive trail is now in radar)

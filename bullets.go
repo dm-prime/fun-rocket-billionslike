@@ -182,10 +182,28 @@ func (g *Game) drawBullets(screen *ebiten.Image, player *Ship) {
 		
 		// Draw homing missiles larger and with a different visual style
 		if bullet.isHoming {
-			// Draw larger circle for homing missile
-			drawCircle(screen, bulletScreenX, bulletScreenY, bulletRadius*1.5, bulletColor)
-			// Draw inner glow
-			drawCircle(screen, bulletScreenX, bulletScreenY, bulletRadius*0.8, color.NRGBA{R: 255, G: 255, B: 255, A: 200})
+			if g.rocketImage != nil {
+				op := &ebiten.DrawImageOptions{}
+				w, h := g.rocketImage.Size()
+				// Scale so it's clearly visible (rockets are bigger than bullets)
+				scale := (bulletRadius * 6.0) / float64(w)
+				
+				op.GeoM.Translate(-float64(w)/2, -float64(h)/2)
+				op.GeoM.Scale(scale, scale)
+				
+				// Rotate based on velocity direction
+				// 0 angle is Up (negative Y)
+				angle := math.Atan2(bullet.vel.x, -bullet.vel.y)
+				op.GeoM.Rotate(angle)
+				
+				op.GeoM.Translate(bulletScreenX, bulletScreenY)
+				screen.DrawImage(g.rocketImage, op)
+			} else {
+				// Draw larger circle for homing missile
+				drawCircle(screen, bulletScreenX, bulletScreenY, bulletRadius*1.5, bulletColor)
+				// Draw inner glow
+				drawCircle(screen, bulletScreenX, bulletScreenY, bulletRadius*0.8, color.NRGBA{R: 255, G: 255, B: 255, A: 200})
+			}
 		} else {
 			// Draw regular bullet as a small circle
 			drawCircle(screen, bulletScreenX, bulletScreenY, bulletRadius, bulletColor)

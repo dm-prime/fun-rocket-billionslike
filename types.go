@@ -1,6 +1,10 @@
 package main
 
-import "image/color"
+import (
+	"image/color"
+
+	"github.com/hajimehoshi/ebiten/v2"
+)
 
 // vec2 represents a 2D vector
 type vec2 struct {
@@ -81,4 +85,10 @@ type Game struct {
 	prevSpaceKey     bool                      // track previous Space key state for shooting
 	waveSpawnTimer   float64                   // timer for enemy wave spawning
 	waveNumber       int                       // current wave number
+	
+	// Images
+	playerImage *ebiten.Image
+	enemyImage  *ebiten.Image
+	rocketImage *ebiten.Image
+	rockImage   *ebiten.Image
 }

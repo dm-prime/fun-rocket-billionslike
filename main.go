@@ -1,9 +1,12 @@
 package main
 
 import (
+	"image"
+	_ "image/png" // Register PNG decoder
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -26,6 +29,13 @@ func newGame() *Game {
 		waveSpawnTimer:   0,
 		waveNumber:       0,
 	}
+
+	// Load images
+	g.playerImage = g.loadImage("assets/player.png")
+	g.enemyImage = g.loadImage("assets/enemy.png")
+	g.rocketImage = g.loadImage("assets/rocket.png")
+	g.rockImage = g.loadImage("assets/rock.png")
+
 	g.initFactions()
 
 	// Create a few ships; index 0 is player, others are passive demo ships.
@@ -83,7 +93,7 @@ func newGame() *Game {
 
 	// Initialize rock spawn timer
 	g.rockSpawnTimer = 0
-	
+
 	// Initialize wave spawn timer (start first wave after a short delay)
 	g.waveSpawnTimer = waveSpawnInterval * 0.5
 
@@ -114,12 +124,12 @@ func (g *Game) Update() error {
 	// Update all ships using unified physics system
 	for i := range g.ships {
 		ship := &g.ships[i]
-		
+
 		// Skip dead ships (they'll be removed later)
 		if ship.health <= 0 {
 			continue
 		}
-		
+
 		// Rocks just drift - no AI or physics updates
 		if g.isRock(ship) {
 			// Rocks only update position based on velocity (no acceleration, no rotation)
@@ -230,17 +240,17 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 // spawnEnemyWaves handles periodic spawning of enemy waves
 func (g *Game) spawnEnemyWaves(player *Ship, dt float64) {
 	g.waveSpawnTimer += dt
-	
+
 	if g.waveSpawnTimer >= waveSpawnInterval {
 		g.waveSpawnTimer = 0
 		g.waveNumber++
-		
+
 		// Calculate number of enemies for this wave (increases over time)
 		numEnemies := enemiesPerWave + int(float64(g.waveNumber)*waveSizeIncrease)
 		if numEnemies > 10 {
 			numEnemies = 10 // Cap at 10 enemies per wave
 		}
-		
+
 		// Spawn enemies around the player
 		for i := 0; i < numEnemies; i++ {
 			g.spawnEnemy(player)
@@ -252,41 +262,41 @@ func (g *Game) spawnEnemyWaves(player *Ship, dt float64) {
 func (g *Game) spawnEnemy(player *Ship) {
 	// Choose a random angle around the player
 	angle := rand.Float64() * 2 * math.Pi
-	
+
 	// Spawn at a distance from player
 	spawnX := player.pos.x + math.Cos(angle)*waveSpawnDistance
 	spawnY := player.pos.y + math.Sin(angle)*waveSpawnDistance
-	
+
 	// Calculate angle toward player
 	dx := player.pos.x - spawnX
 	dy := player.pos.y - spawnY
 	targetAngle := math.Atan2(dx, -dy)
-	
+
 	// Add some random variation to the angle
 	angleVariation := (rand.Float64() - 0.5) * math.Pi * 0.3 // ±27 degrees
 	targetAngle += angleVariation
-	
+
 	// Initial velocity toward player (with some randomness)
 	speed := 50.0 + rand.Float64()*50.0 // 50-100 px/s
 	velX := math.Sin(targetAngle) * speed
 	velY := -math.Cos(targetAngle) * speed
-	
+
 	// Create enemy ship
 	enemy := Ship{
-		pos:     vec2{x: spawnX, y: spawnY},
-		vel:     vec2{x: velX, y: velY},
-		angle:   targetAngle,
-		health:  maxHealth,
-		faction: "Raiders", // Enemy faction
+		pos:      vec2{x: spawnX, y: spawnY},
+		vel:      vec2{x: velX, y: velY},
+		angle:    targetAngle,
+		health:   maxHealth,
+		faction:  "Raiders", // Enemy faction
 		isPlayer: false,
 	}
-	
+
 	// Initialize turret points
 	g.initTurretPoints(&enemy)
-	
+
 	// Add to ships
 	g.ships = append(g.ships, enemy)
-	
+
 	// Initialize NPC state for this ship (start in Pursue state)
 	shipIdx := len(g.ships) - 1
 	g.setNPCState(shipIdx, NPCStatePursue)
@@ -296,7 +306,7 @@ func (g *Game) spawnEnemy(player *Ship) {
 func (g *Game) restart() {
 	// Reset game state by creating a new game
 	newG := newGame()
-	
+
 	// Copy over the new state
 	g.ships = newG.ships
 	g.playerIndex = newG.playerIndex
@@ -308,6 +318,10 @@ func (g *Game) restart() {
 	g.radarTrailTimers = newG.radarTrailTimers
 	g.npcStates = newG.npcStates
 	g.npcInputs = newG.npcInputs
+	g.playerImage = newG.playerImage
+	g.enemyImage = newG.enemyImage
+	g.rocketImage = newG.rocketImage
+	g.rockImage = newG.rockImage
 	g.rockSpawnTimer = newG.rockSpawnTimer
 	g.gameTime = 0
 	g.gameOver = false
@@ -315,6 +329,27 @@ func (g *Game) restart() {
 	g.prevSpaceKey = false
 	g.waveSpawnTimer = waveSpawnInterval * 0.5
 	g.waveNumber = 0
+}
+
+// loadImage loads an image from a file path and returns an ebiten.Image
+func (g *Game) loadImage(path string) *ebiten.Image {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Printf("failed to open image file %s: %v", path, err)
+		return nil
+	}
+	defer file.Close()
+
+	img, _, err := image.Decode(file)
+	if err != nil {
+		log.Printf("failed to decode image %s: %v", path, err)
+		return nil
+	}
+
+	ebitenImage := ebiten.NewImageFromImage(img)
+	w, h := ebitenImage.Size()
+	log.Printf("loaded image %s: %dx%d", path, w, h)
+	return ebitenImage
 }
 
 func main() {
@@ -326,7 +361,7 @@ func main() {
 	screenHeight = monitorHeight
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Pocket Rocket - Ebiten Demo")
+	ebiten.SetWindowTitle("gfx game")
 	ebiten.SetTPS(60)
 
 	if err := ebiten.RunGame(newGame()); err != nil {
