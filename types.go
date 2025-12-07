@@ -31,6 +31,17 @@ type Ship struct {
 	retrogradeMode      bool    // true when performing retrograde burn maneuver
 	retrogradeTurnDir   float64 // chosen turn direction for retrograde (-1 or 1)
 	isPlayer            bool
+	turretPoints        []vec2  // turret positions relative to ship center (local space)
+	lastFireTime        float64 // time since last bullet was fired
+}
+
+// Bullet represents a projectile fired from a ship's turret
+type Bullet struct {
+	pos      vec2    // world position
+	vel      vec2    // velocity vector
+	age      float64 // age in seconds
+	faction  string  // faction that fired the bullet
+	shipIdx  int     // index of ship that fired it
 }
 
 // dust represents a single dust particle
@@ -51,6 +62,7 @@ type Game struct {
 	ships            []Ship
 	playerIndex      int
 	dust             []dust
+	bullets          []Bullet
 	factionColors    map[string]color.NRGBA
 	alliances        map[string]map[string]bool
 	radarTrails      map[int][]RadarTrailPoint // ship index -> trail points
@@ -58,6 +70,7 @@ type Game struct {
 	npcStates        map[int]NPCState          // ship index -> NPC state
 	npcInputs        map[int]ShipInput         // ship index -> current NPC input (for predictive trails)
 	rockSpawnTimer   float64                   // timer for rock spawning
+	gameTime         float64                   // total game time in seconds
 	initialized      bool                      // track if screen size has been initialized
 	prevAltEnter     bool                      // track previous Alt+Enter state for toggle
 }

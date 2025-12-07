@@ -14,10 +14,12 @@ func newGame() *Game {
 
 	g := &Game{
 		dust:             make([]dust, dustCount),
+		bullets:          make([]Bullet, 0),
 		radarTrails:      make(map[int][]RadarTrailPoint),
 		radarTrailTimers: make(map[int]float64),
 		npcStates:        make(map[int]NPCState),
 		npcInputs:        make(map[int]ShipInput),
+		gameTime:         0,
 	}
 	g.initFactions()
 
@@ -53,6 +55,13 @@ func newGame() *Game {
 	}
 	g.playerIndex = 0
 
+	// Initialize turret points for all ships
+	for i := range g.ships {
+		if !g.isRock(&g.ships[i]) {
+			g.initTurretPoints(&g.ships[i])
+		}
+	}
+
 	// Seed dust in a square around the player so rotated views stay filled.
 	initialSpan := math.Hypot(float64(screenWidth), float64(screenHeight)) * dustSpanMultiplier
 	halfSpan := initialSpan * 0.5
@@ -75,6 +84,7 @@ func newGame() *Game {
 
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
+	g.gameTime += dt
 
 	g.handleInput()
 
@@ -106,7 +116,13 @@ func (g *Game) Update() error {
 
 		// Apply physics using unified system
 		g.updatePhysics(ship, input, dt)
+
+		// Update turret firing for NPCs
+		g.updateTurretFiring(ship, dt)
 	}
+
+	// Update bullets
+	g.updateBullets(dt)
 
 	// Check for collisions between player and rocks
 	for i := range g.ships {
@@ -159,6 +175,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawShip(screen, ship, shipScreenX, shipScreenY, renderAngle, velRender, player)
 	}
 
+	g.drawBullets(screen, player)
 	g.drawOffscreenIndicators(screen, player)
 	g.drawHUD(screen, player)
 	g.drawRadar(screen, player)

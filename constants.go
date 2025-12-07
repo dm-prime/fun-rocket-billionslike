@@ -27,19 +27,25 @@ const (
 	radarMargin              = 14.0
 	indicatorMargin          = 18.0
 	indicatorArrowLen        = 18.0
-	radarTrailMaxAge         = 3.0    // seconds
-	radarTrailUpdateInterval = 0.1    // seconds between trail points
-	radarTrailMaxPoints      = 30     // maximum trail points per ship
-	radarStackThreshold      = 10.0   // pixels - dots closer than this will be stacked
-	radarStackSpacing        = 8.0    // pixels - vertical spacing between stacked dots
-	rockCount                = 50     // target number of rocks to maintain
-	rockRadius               = 12.0   // collision radius for rocks
-	shipCollisionRadius      = 18.0   // collision radius for ships (based on ship geometry)
-	collisionCourseLookAhead = 5.0    // seconds to look ahead for collision course detection
-	rockPathDistance         = 800.0  // distance from player path to spawn/keep rocks
-	rockDespawnDistance      = 1500.0 // distance from player to despawn rocks
-	rockSpawnInterval        = 0.2    // seconds between rock spawn attempts
-	rockMinSpawnDistance     = 600.0  // minimum distance from player to spawn rocks (outside view range)
+	radarTrailMaxAge         = 3.0         // seconds
+	radarTrailUpdateInterval = 0.1         // seconds between trail points
+	radarTrailMaxPoints      = 30          // maximum trail points per ship
+	radarStackThreshold      = 10.0        // pixels - dots closer than this will be stacked
+	radarStackSpacing        = 8.0         // pixels - vertical spacing between stacked dots
+	rockCount                = 50          // target number of rocks to maintain
+	rockRadius               = 12.0        // collision radius for rocks
+	shipCollisionRadius      = 18.0        // collision radius for ships (based on ship geometry)
+	collisionCourseLookAhead = 5.0         // seconds to look ahead for collision course detection
+	rockPathDistance         = 800.0       // distance from player path to spawn/keep rocks
+	rockDespawnDistance      = 1500.0      // distance from player to despawn rocks
+	rockSpawnInterval        = 0.2         // seconds between rock spawn attempts
+	rockMinSpawnDistance     = 600.0       // minimum distance from player to spawn rocks (outside view range)
+	bulletSpeed              = 800.0       // pixels per second
+	bulletLifetime           = 3.0         // seconds before bullet despawns
+	bulletRadius             = 2.0         // collision radius for bullets
+	turretFireRate           = 0.5         // seconds between shots per turret
+	turretRange              = 2000.0      // maximum range for turret targeting
+	turretFireAngleThreshold = math.Pi / 6 // 30 degrees - turret can fire if target is within this angle
 )
 
 // Color constants
@@ -70,6 +76,11 @@ const (
 	sideFlameVarLen     = 5.0
 	sideThrusterX       = 10.0
 	velocityVectorScale = 0.1
+	turretLeftX         = -8.0 // left turret X offset (local space)
+	turretLeftY         = 8.0  // left turret Y offset (local space)
+	turretRightX        = 8.0  // right turret X offset (local space)
+	turretRightY        = 8.0  // right turret Y offset (local space)
+	turretSize          = 3.0  // visual size of turret point
 
 	predictiveTrailDuration     = 3.0 // seconds into future to predict
 	predictiveTrailSegmentCount = 30  // number of segments in the trail

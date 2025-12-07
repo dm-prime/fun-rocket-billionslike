@@ -53,6 +53,16 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 	ebitenutil.DrawLine(screen, left.x, left.y, right.x, right.y, shipColor)
 	ebitenutil.DrawLine(screen, right.x, right.y, nose.x, nose.y, shipColor)
 
+	// Draw turret points
+	for _, turretLocal := range ship.turretPoints {
+		turretRotated := rotatePoint(turretLocal, renderAngle)
+		turretX := shipCenterX + turretRotated.x
+		turretY := shipCenterY + turretRotated.y
+		// Draw turret as a small circle
+		turretColor := color.NRGBA{R: 200, G: 200, B: 200, A: 255}
+		drawCircle(screen, turretX, turretY, turretSize, turretColor)
+	}
+
 	// Draw green velocity vector for all ships (predictive trail is now in radar)
 	velEndX := shipCenterX + velRender.x*velocityVectorScale
 	velEndY := shipCenterY + velRender.y*velocityVectorScale
