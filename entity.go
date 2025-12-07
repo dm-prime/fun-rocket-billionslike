@@ -44,14 +44,18 @@ type Updatable interface {
 // NewShip creates a new ship with a unique ID
 func NewShip(pos vec2, vel vec2, angle float64, faction string, isPlayer bool) *Ship {
 	return &Ship{
-		id:           generateEntityID(),
-		pos:          pos,
-		vel:          vel,
-		angle:        angle,
-		health:       maxHealth,
-		faction:      faction,
-		isPlayer:     isPlayer,
-		turretPoints: make([]vec2, 0),
+		id:                     generateEntityID(),
+		pos:                    pos,
+		vel:                    vel,
+		angle:                  angle,
+		health:                 maxHealth,
+		faction:                faction,
+		isPlayer:               isPlayer,
+		turretPoints:           make([]vec2, 0),
+		thrustParticles:        NewThrustParticleSystem(),
+		reverseParticles:       NewReverseThrustParticleSystem(),
+		leftThrusterParticles:  NewSideThrusterParticleSystem(true),
+		rightThrusterParticles: NewSideThrusterParticleSystem(false),
 	}
 }
 
@@ -80,4 +84,3 @@ func NewBullet(pos vec2, vel vec2, faction string, ownerID EntityID, isHoming bo
 		damage:   damage,
 	}
 }
-

@@ -145,6 +145,9 @@ func (g *Game) Update() error {
 
 		// Update turret firing for NPCs
 		g.updateTurretFiring(ship, dt)
+
+		// Update particle systems based on ship state
+		g.updateShipParticles(ship, dt)
 	}
 
 	// Update all rocks (just position updates)
@@ -201,6 +204,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		offset := vec2{d.pos.x - player.pos.x, d.pos.y - player.pos.y}
 		rot := rotatePoint(offset, -player.angle)
 		drawCircle(screen, screenCenter.x+rot.x, screenCenter.y+rot.y, d.radius, colorDust)
+	}
+
+	// Draw ship particle systems (before ships so they appear behind)
+	for _, ship := range g.ships {
+		if ship.health <= 0 {
+			continue
+		}
+		ship.thrustParticles.Draw(screen, player.pos, player.angle)
+		ship.reverseParticles.Draw(screen, player.pos, player.angle)
+		ship.leftThrusterParticles.Draw(screen, player.pos, player.angle)
+		ship.rightThrusterParticles.Draw(screen, player.pos, player.angle)
 	}
 
 	// Draw all ships

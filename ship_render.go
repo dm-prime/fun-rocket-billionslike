@@ -2,8 +2,6 @@ package main
 
 import (
 	"image/color"
-	"math"
-	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -49,106 +47,7 @@ func (g *Game) drawShip(screen *ebiten.Image, ship *Ship, shipCenterX, shipCente
 	velEndY := shipCenterY + velRender.y*velocityVectorScale
 	ebitenutil.DrawLine(screen, shipCenterX, shipCenterY, velEndX, velEndY, colorVelocityVector)
 
-	// Main engine forward thrust
-	if ship.thrustThisFrame {
-		// Position flame at the back center of the ship (midpoint of left and right back points)
-		flameAnchor := rotatePoint(vec2{0, shipBackOffsetY}, renderAngle)
-		flameAnchor.x += shipCenterX
-		flameAnchor.y += shipCenterY
-
-		// Flame extends backward from the ship (opposite direction of forward movement)
-		flameLength := flameBaseLength + rand.Float64()*flameVarLength
-		flameDir := rotatePoint(vec2{0, shipBackOffsetY + flameLength}, renderAngle)
-		flameDir.x += shipCenterX
-		flameDir.y += shipCenterY
-
-		flameColor := color.NRGBA{R: 255, G: 150 + uint8(rand.Intn(100)), B: 0, A: 255}
-		ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, flameColor)
-	}
-
-	// Main engine reverse thrust (flame at front)
-	if ship.reverseThrustFrame {
-		// Position flame at the front/nose of the ship
-		flameAnchor := rotatePoint(vec2{0, shipNoseOffsetY}, renderAngle)
-		flameAnchor.x += shipCenterX
-		flameAnchor.y += shipCenterY
-
-		// Flame extends forward from the nose (opposite to ship forward direction)
-		flameLength := flameBaseLength + rand.Float64()*flameVarLength
-		flameDir := rotatePoint(vec2{0, shipNoseOffsetY - flameLength}, renderAngle)
-		flameDir.x += shipCenterX
-		flameDir.y += shipCenterY
-
-		flameColor := color.NRGBA{R: 100, G: 150 + uint8(rand.Intn(100)), B: 255, A: 255} // Blue flame for reverse
-		ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, flameColor)
-	}
-
-	// Draw sideways flames when actively turning (only when input is pressed)
-	if ship.turningThisFrame {
-		if ship.turnDirection > 0 {
-			// Turning right - show flame on right side
-			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY, renderAngle) // right
-		} else {
-			// Turning left - show flame on left side
-			g.fireThruster(screen, ship, false, shipCenterX, shipCenterY, renderAngle) // left
-		}
-	}
-
-	// Automatically fire rotation cancellation thruster when no turn input but still rotating
-	if !ship.turningThisFrame && math.Abs(ship.angularVel) > 0.1 {
-		// Fire thruster on the side that opposes current rotation
-		if ship.angularVel > 0 {
-			// Rotating right, fire left thruster to counter
-			g.fireThruster(screen, ship, false, shipCenterX, shipCenterY, renderAngle) // left
-		} else {
-			// Rotating left, fire right thruster to counter
-			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY, renderAngle) // right
-		}
-	}
-
-	// Draw angular damping thruster when S is pressed (fires on side that opposes rotation)
-	// S key provides stronger/faster damping
-	if ship.dampingAngularSpeed && math.Abs(ship.angularVel) > 0.1 {
-		// Fire thruster on the side that opposes current rotation
-		if ship.angularVel > 0 {
-			// Rotating right, fire left thruster to counter
-			g.fireThruster(screen, ship, false, shipCenterX, shipCenterY, renderAngle) // left
-		} else {
-			// Rotating left, fire right thruster to counter
-			g.fireThruster(screen, ship, true, shipCenterX, shipCenterY, renderAngle) // right
-		}
-	}
-}
-
-// fireThruster draws a side thruster flame effect
-func (g *Game) fireThruster(screen *ebiten.Image, ship *Ship, right bool, centerX, centerY float64, renderAngle float64) {
-	// right: true for right side, false for left side
-	sideOffset := -sideThrusterX // left side
-	if right {
-		sideOffset = sideThrusterX // right side
-	}
-
-	sideFlameLength := sideFlameBaseLen + rand.Float64()*sideFlameVarLen
-	sideFlameColor := color.NRGBA{R: 255, G: 120 + uint8(rand.Intn(80)), B: 0, A: 255}
-
-	// Position flame anchor on the side of the ship, near the back
-	flameAnchor := rotatePoint(vec2{sideOffset, shipBackOffsetY}, renderAngle)
-	flameAnchor.x += centerX
-	flameAnchor.y += centerY
-
-	// Outward direction: (1, 0) for right side, (-1, 0) for left side in local space
-	outwardDirX := -1.0 // left
-	if right {
-		outwardDirX = 1.0 // right
-	}
-	outwardDir := rotatePoint(vec2{outwardDirX, 0}, renderAngle)
-
-	flameDir := vec2{
-		x: flameAnchor.x + outwardDir.x*sideFlameLength,
-		y: flameAnchor.y + outwardDir.y*sideFlameLength,
-	}
-
-	ebitenutil.DrawLine(screen, flameAnchor.x, flameAnchor.y, flameDir.x, flameDir.y, sideFlameColor)
+	// Particle systems now handle all thrust and turning effects
 }
 
 // drawRock draws a rock with collision highlighting if on collision course

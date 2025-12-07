@@ -18,21 +18,25 @@ type ShipInput struct {
 
 // Ship represents a single spacecraft in the world.
 type Ship struct {
-	id                  EntityID
-	pos                 vec2
-	vel                 vec2
-	angle               float64
-	angularVel          float64
-	health              float64
-	faction             string
-	thrustThisFrame     bool
-	reverseThrustFrame  bool // true when reverse thrusting this frame
-	turningThisFrame    bool
-	turnDirection       float64 // -1 for left, 1 for right, 0 for none
-	dampingAngularSpeed bool    // true when S key is pressed to dampen angular speed
-	isPlayer            bool
-	turretPoints        []vec2  // turret positions relative to ship center (local space)
-	lastFireTime        float64 // time since last bullet was fired
+	id                     EntityID
+	pos                    vec2
+	vel                    vec2
+	angle                  float64
+	angularVel             float64
+	health                 float64
+	faction                string
+	thrustThisFrame        bool
+	reverseThrustFrame     bool // true when reverse thrusting this frame
+	turningThisFrame       bool
+	turnDirection          float64 // -1 for left, 1 for right, 0 for none
+	dampingAngularSpeed    bool    // true when S key is pressed to dampen angular speed
+	isPlayer               bool
+	turretPoints           []vec2          // turret positions relative to ship center (local space)
+	lastFireTime           float64         // time since last bullet was fired
+	thrustParticles        *ParticleSystem // forward thrust particle system
+	reverseParticles       *ParticleSystem // reverse thrust particle system
+	leftThrusterParticles  *ParticleSystem // left side thruster particle system
+	rightThrusterParticles *ParticleSystem // right side thruster particle system
 }
 
 // ID returns the entity ID of the ship

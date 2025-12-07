@@ -29,6 +29,28 @@ func drawCircle(dst *ebiten.Image, cx, cy, radius float64, clr color.Color) {
 	}
 }
 
+// drawFilledCircle draws a filled circle by filling all pixels within the radius
+func drawFilledCircle(dst *ebiten.Image, cx, cy, radius float64, clr color.Color) {
+	radiusInt := int(radius)
+	cxInt := int(cx)
+	cyInt := int(cy)
+	radiusSq := radius * radius
+	
+	// Draw filled circle by iterating through a bounding box
+	for y := -radiusInt; y <= radiusInt; y++ {
+		for x := -radiusInt; x <= radiusInt; x++ {
+			distSq := float64(x*x + y*y)
+			if distSq <= radiusSq {
+				px := cxInt + x
+				py := cyInt + y
+				if px >= 0 && px < dst.Bounds().Dx() && py >= 0 && py < dst.Bounds().Dy() {
+					dst.Set(px, py, clr)
+				}
+			}
+		}
+	}
+}
+
 // drawRect draws a filled rectangle
 func drawRect(dst *ebiten.Image, x, y, width, height float64, clr color.Color) {
 	for py := int(y); py < int(y+height); py++ {
