@@ -23,6 +23,8 @@ func newGame() *Game {
 		gameOver:         false,
 		prevRestartKey:   false,
 		prevSpaceKey:     false,
+		waveSpawnTimer:   0,
+		waveNumber:       0,
 	}
 	g.initFactions()
 
@@ -81,6 +83,9 @@ func newGame() *Game {
 
 	// Initialize rock spawn timer
 	g.rockSpawnTimer = 0
+	
+	// Initialize wave spawn timer (start first wave after a short delay)
+	g.waveSpawnTimer = waveSpawnInterval * 0.5
 
 	return g
 }
@@ -159,6 +164,9 @@ func (g *Game) Update() error {
 	// Manage rocks: despawn far ones, spawn new ones near path
 	g.manageRocks(player, dt)
 
+	// Spawn enemy waves
+	g.spawnEnemyWaves(player, dt)
+
 	g.updateDust(dt, player)
 
 	// Update radar trails
@@ -219,6 +227,71 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
 }
 
+// spawnEnemyWaves handles periodic spawning of enemy waves
+func (g *Game) spawnEnemyWaves(player *Ship, dt float64) {
+	g.waveSpawnTimer += dt
+	
+	if g.waveSpawnTimer >= waveSpawnInterval {
+		g.waveSpawnTimer = 0
+		g.waveNumber++
+		
+		// Calculate number of enemies for this wave (increases over time)
+		numEnemies := enemiesPerWave + int(float64(g.waveNumber)*waveSizeIncrease)
+		if numEnemies > 10 {
+			numEnemies = 10 // Cap at 10 enemies per wave
+		}
+		
+		// Spawn enemies around the player
+		for i := 0; i < numEnemies; i++ {
+			g.spawnEnemy(player)
+		}
+	}
+}
+
+// spawnEnemy creates a single enemy ship at a distance from the player
+func (g *Game) spawnEnemy(player *Ship) {
+	// Choose a random angle around the player
+	angle := rand.Float64() * 2 * math.Pi
+	
+	// Spawn at a distance from player
+	spawnX := player.pos.x + math.Cos(angle)*waveSpawnDistance
+	spawnY := player.pos.y + math.Sin(angle)*waveSpawnDistance
+	
+	// Calculate angle toward player
+	dx := player.pos.x - spawnX
+	dy := player.pos.y - spawnY
+	targetAngle := math.Atan2(dx, -dy)
+	
+	// Add some random variation to the angle
+	angleVariation := (rand.Float64() - 0.5) * math.Pi * 0.3 // ±27 degrees
+	targetAngle += angleVariation
+	
+	// Initial velocity toward player (with some randomness)
+	speed := 50.0 + rand.Float64()*50.0 // 50-100 px/s
+	velX := math.Sin(targetAngle) * speed
+	velY := -math.Cos(targetAngle) * speed
+	
+	// Create enemy ship
+	enemy := Ship{
+		pos:     vec2{x: spawnX, y: spawnY},
+		vel:     vec2{x: velX, y: velY},
+		angle:   targetAngle,
+		health:  maxHealth,
+		faction: "Raiders", // Enemy faction
+		isPlayer: false,
+	}
+	
+	// Initialize turret points
+	g.initTurretPoints(&enemy)
+	
+	// Add to ships
+	g.ships = append(g.ships, enemy)
+	
+	// Initialize NPC state for this ship (start in Pursue state)
+	shipIdx := len(g.ships) - 1
+	g.setNPCState(shipIdx, NPCStatePursue)
+}
+
 // restart resets the game to initial state
 func (g *Game) restart() {
 	// Reset game state by creating a new game
@@ -240,6 +313,8 @@ func (g *Game) restart() {
 	g.gameOver = false
 	g.prevRestartKey = false
 	g.prevSpaceKey = false
+	g.waveSpawnTimer = waveSpawnInterval * 0.5
+	g.waveNumber = 0
 }
 
 func main() {

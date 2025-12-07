@@ -54,6 +54,10 @@ const (
 	shipCollisionDamage      = 30.0        // damage from ship-ship collisions
 	rockCollisionDamage      = 50.0        // damage from ship-rock collisions
 	maxHealth                = 100.0       // maximum health for ships
+	waveSpawnInterval        = 8.0         // seconds between enemy waves
+	waveSpawnDistance        = 1200.0      // distance from player to spawn enemies
+	enemiesPerWave           = 3           // number of enemies per wave
+	waveSizeIncrease         = 0.1         // increase enemies per wave over time (multiplier)
 )
 
 // Color constants

@@ -79,4 +79,6 @@ type Game struct {
 	gameOver         bool                      // true when player is dead
 	prevRestartKey   bool                      // track previous R key state for restart
 	prevSpaceKey     bool                      // track previous Space key state for shooting
+	waveSpawnTimer   float64                   // timer for enemy wave spawning
+	waveNumber       int                       // current wave number
 }

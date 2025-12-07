@@ -155,8 +155,8 @@ func (g *Game) drawHUD(screen *ebiten.Image, player *Ship) {
 		healthColor = color.NRGBA{R: 255, G: 255, B: 0, A: 255} // Yellow
 	}
 	
-	hud := fmt.Sprintf("Health: %.0f/%.0f | Speed: %0.1f | Angular: %0.2f rad/s%s",
-		player.health, maxHealth, math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
+	hud := fmt.Sprintf("Wave: %d | Health: %.0f/%.0f | Speed: %0.1f | Angular: %0.2f rad/s%s",
+		g.waveNumber, player.health, maxHealth, math.Hypot(player.vel.x, player.vel.y), player.angularVel, retroStatus)
 	ebitenutil.DebugPrint(screen, hud)
 	
 	// Draw health bar
