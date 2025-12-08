@@ -199,59 +199,36 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 
 	// Update target and rotate turret (not ship)
 	if nearestEnemy != nil {
-		playerInput.TargetX = nearestEnemy.X
-		playerInput.TargetY = nearestEnemy.Y
-		playerInput.HasTarget = true
+		// Get aim point (turret position or ship center)
+		aimX, aimY, hasTurret := GetAimPoint(g.player)
 		
-		// Update turret rotation to face target
-		// Get active turret mount point
-		shipConfig := GetShipTypeConfig(g.player.ShipType)
-		var activeMount *TurretMountPoint
-		for i := range shipConfig.TurretMounts {
-			if shipConfig.TurretMounts[i].Active {
-				activeMount = &shipConfig.TurretMounts[i]
-				break
-			}
-		}
-		
-		if activeMount != nil {
-			// Calculate turret position in world space to get accurate angle to target
-			cosRot := math.Cos(g.player.Rotation)
-			sinRot := math.Sin(g.player.Rotation)
-			mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
-			mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
-			turretWorldX := g.player.X + mountX
-			turretWorldY := g.player.Y + mountY
+		if hasTurret {
+			// Calculate predictive aim target
+			predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, nearestEnemy)
 			
-			// Calculate angle from turret to target
-			turretDx := nearestEnemy.X - turretWorldX
-			turretDy := nearestEnemy.Y - turretWorldY
+			// Store predicted target position
+			playerInput.TargetX = predictedX
+			playerInput.TargetY = predictedY
+			playerInput.HasTarget = true
+			
+			// Calculate angle from turret to predicted target
+			turretDx := predictedX - aimX
+			turretDy := predictedY - aimY
 			turretTargetRotation := math.Atan2(turretDy, turretDx)
 			
 			// Smoothly rotate turret towards target
-			currentTurretRotation := playerInput.TurretRotation
-			turretAngleDiff := turretTargetRotation - currentTurretRotation
-			
-			// Normalize angle difference to [-π, π]
-			for turretAngleDiff > math.Pi {
-				turretAngleDiff -= 2 * math.Pi
-			}
-			for turretAngleDiff < -math.Pi {
-				turretAngleDiff += 2 * math.Pi
-			}
-			
-			// Rotate turret with maximum angular velocity
 			maxTurretAngularVelocity := 8.0 // radians per second (faster than ship)
-			turretRotationStep := turretAngleDiff
-			if math.Abs(turretRotationStep) > maxTurretAngularVelocity*deltaTime {
-				if turretRotationStep > 0 {
-					turretRotationStep = maxTurretAngularVelocity * deltaTime
-				} else {
-					turretRotationStep = -maxTurretAngularVelocity * deltaTime
-				}
-			}
-			
-			playerInput.TurretRotation += turretRotationStep
+			playerInput.TurretRotation = RotateTowardsTarget(
+				playerInput.TurretRotation,
+				turretTargetRotation,
+				maxTurretAngularVelocity,
+				deltaTime,
+			)
+		} else {
+			// No turret, just store target position
+			playerInput.TargetX = nearestEnemy.X
+			playerInput.TargetY = nearestEnemy.Y
+			playerInput.HasTarget = true
 		}
 	} else {
 		playerInput.HasTarget = false
@@ -511,7 +488,7 @@ func (g *Game) Update() error {
 // Draw renders the game
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{20, 20, 40, 255}) // Dark blue background
-	g.renderer.Render(screen, g.world)
+	g.renderer.Render(screen, g.world, g.player)
 }
 
 // Layout returns the game's screen size

@@ -106,7 +106,7 @@ func NewRenderer(camera *Camera) *Renderer {
 }
 
 // Render renders all visible entities
-func (r *Renderer) Render(screen *ebiten.Image, world *World) {
+func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity) {
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
@@ -116,13 +116,13 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World) {
 			if entity.Health <= 0 {
 				continue
 			}
-			r.RenderEntity(screen, entity)
+			r.RenderEntity(screen, entity, player)
 		}
 	}
 }
 
 // RenderEntity renders a single entity
-func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
+func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *Entity) {
 	// Convert world coordinates to screen coordinates
 	sx, sy := r.camera.WorldToScreen(entity.X, entity.Y)
 
@@ -261,6 +261,11 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 		}
 	}
 
+	// Draw aim target indicator for ships with turrets or shooting capability
+	if entity.Type != EntityTypeProjectile {
+		r.drawAimTarget(screen, entity, player)
+	}
+
 	// Draw health bar for damaged entities
 	if entity.Health < entity.MaxHealth {
 		barWidth := radius * 2
@@ -275,6 +280,95 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 		healthPercent := entity.Health / entity.MaxHealth
 		healthWidth := barWidth * healthPercent
 		vector.DrawFilledRect(screen, float32(barX), float32(barY), float32(healthWidth), float32(barHeight), color.RGBA{0, 255, 0, 255}, true)
+	}
+}
+
+// drawAimTarget draws a line from the turret/shooting point to the target
+func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *Entity) {
+	var targetX, targetY float64
+	var hasTarget bool
+	var aimPointX, aimPointY float64
+
+	shipConfig := GetShipTypeConfig(entity.ShipType)
+
+	// Determine target based on entity type
+	if entity.Type == EntityTypePlayer {
+		// Player targets enemies
+		if playerInput, ok := entity.Input.(*PlayerInput); ok {
+			if playerInput.HasTarget {
+				targetX = playerInput.TargetX
+				targetY = playerInput.TargetY
+				hasTarget = true
+
+				// Get turret position for aim point
+				var activeMount *TurretMountPoint
+				for i := range shipConfig.TurretMounts {
+					if shipConfig.TurretMounts[i].Active {
+						activeMount = &shipConfig.TurretMounts[i]
+						break
+					}
+				}
+
+				if activeMount != nil {
+					cosRot := math.Cos(entity.Rotation)
+					sinRot := math.Sin(entity.Rotation)
+					mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
+					mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
+					aimPointX = entity.X + mountX
+					aimPointY = entity.Y + mountY
+				} else {
+					// Fallback to ship center
+					aimPointX = entity.X
+					aimPointY = entity.Y
+				}
+			}
+		}
+	} else if entity.Type == EntityTypeEnemy {
+		// Enemies target the player (with predictive aiming for shooters)
+		if player != nil && player.Active {
+			// Check if this enemy has AI input with target info
+			if aiInput, ok := entity.Input.(*AIInput); ok {
+				// Use stored target (which may be predictive for shooters)
+				targetX = aiInput.TargetX
+				targetY = aiInput.TargetY
+				hasTarget = true
+			} else {
+				// Fallback to current player position
+				targetX = player.X
+				targetY = player.Y
+				hasTarget = true
+			}
+
+			// For enemies, aim from ship center (they shoot from center)
+			aimPointX = entity.X
+			aimPointY = entity.Y
+		}
+	}
+
+	// Draw aim line if there's a target
+	if hasTarget {
+		// Convert to screen coordinates
+		aimSx, aimSy := r.camera.WorldToScreen(aimPointX, aimPointY)
+		targetSx, targetSy := r.camera.WorldToScreen(targetX, targetY)
+
+		// Draw aim line (dashed or solid line)
+		// Use a semi-transparent color
+		aimColor := color.RGBA{255, 255, 0, 128} // Yellow, semi-transparent
+		if entity.Type == EntityTypeEnemy {
+			aimColor = color.RGBA{255, 100, 100, 128} // Light red for enemies
+		}
+
+		// Draw line from aim point to target
+		vector.StrokeLine(screen, float32(aimSx), float32(aimSy),
+			float32(targetSx), float32(targetSy), 1.5, aimColor, true)
+
+		// Draw small circle at target position
+		targetRadius := 3.0 * r.camera.Zoom
+		if targetRadius < 1.5 {
+			targetRadius = 1.5
+		}
+		vector.StrokeCircle(screen, float32(targetSx), float32(targetSy),
+			float32(targetRadius), 1.5, aimColor, true)
 	}
 }
 

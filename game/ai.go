@@ -60,20 +60,36 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 					targetX = player.X
 					targetY = player.Y
 				}
+				
+				// Calculate predictive aim target for shooting
+				aimX, aimY, _ := GetAimPoint(entity)
+				predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, player)
+				// Store predicted target for rendering
+				aiInput.TargetX = predictedX
+				aiInput.TargetY = predictedY
+			} else {
+				// Store movement target
+				aiInput.TargetX = targetX
+				aiInput.TargetY = targetY
 			}
 		} else {
 			// No player, wander
 			aiInput.PatternTime += deltaTime
 			targetX = entity.X + math.Cos(aiInput.PatternTime)*50
 			targetY = entity.Y + math.Sin(aiInput.PatternTime)*50
+			aiInput.TargetX = targetX
+			aiInput.TargetY = targetY
 		}
 	}
 
-	// Update target position
-	aiInput.TargetX = targetX
-	aiInput.TargetY = targetY
+	// Update target position (for movement, not shooting)
+	// Note: For shooters, TargetX/TargetY is already set to predicted aim position above
+	if aiInput.EnemyType != EnemyTypeShooter || player == nil || !player.Active {
+		aiInput.TargetX = targetX
+		aiInput.TargetY = targetY
+	}
 
-	// Calculate desired rotation to face target
+	// Calculate desired rotation to face movement target (not aim target)
 	dx := targetX - entity.X
 	dy := targetY - entity.Y
 	distance := math.Sqrt(dx*dx + dy*dy)
