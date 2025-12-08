@@ -36,6 +36,9 @@ type Entity struct {
 	// Ship type (determines stats and graphics)
 	ShipType ShipType
 
+	// Faction (determined at spawn time)
+	Faction Faction
+
 	// Current cell coordinates (for fast lookup)
 	CellX, CellY int
 
@@ -82,10 +85,12 @@ func NewEntity(x, y, radius float64, entityType EntityType, input InputProvider)
 		Health:    100.0,
 		Active:    true,
 		Age:       0.0,
+		Faction:   FactionEnemy, // Default, should be set explicitly
 	}
 }
 
 // NewEntityWithShipType creates a new entity with ship type (sets stats from ship type)
+// Faction should be set separately after creation
 func NewEntityWithShipType(x, y float64, entityType EntityType, shipType ShipType, input InputProvider) *Entity {
 	shipConfig := GetShipTypeConfig(shipType)
 	entity := &Entity{
@@ -99,6 +104,7 @@ func NewEntityWithShipType(x, y float64, entityType EntityType, shipType ShipTyp
 		Health:    shipConfig.Health,
 		Active:    true,
 		Age:       0.0,
+		Faction:   FactionEnemy, // Default, should be set explicitly
 	}
 	return entity
 }
@@ -197,5 +203,6 @@ func (e *Entity) Reset() {
 	e.CellX = 0
 	e.CellY = 0
 	e.Age = 0.0
+	e.Faction = FactionEnemy // Reset to default
 }
 

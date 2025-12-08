@@ -23,6 +23,19 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 	// Update AI input state
 	aiInput.Update(deltaTime)
 
+	// Get entity faction to determine target
+	entityFaction := GetEntityFaction(entity)
+	targetFaction := GetOppositeFaction(entityFaction)
+
+	// Find target of opposite faction (use player as primary target for now)
+	var targetEntity *Entity
+	if player != nil && player.Active {
+		playerFaction := GetEntityFaction(player)
+		if playerFaction == targetFaction {
+			targetEntity = player
+		}
+	}
+
 	// Calculate target position based on behavior
 	targetX := entity.X
 	targetY := entity.Y
@@ -30,12 +43,12 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 	// Behavior depends on enemy type
 	switch aiInput.EnemyType {
 	case EnemyTypeHomingSuicide:
-		// Direct homing: always chase player directly
-		if player != nil && player.Active {
-			targetX = player.X
-			targetY = player.Y
+		// Direct homing: chase target of opposite faction
+		if targetEntity != nil && targetEntity.Active {
+			targetX = targetEntity.X
+			targetY = targetEntity.Y
 		} else {
-			// No player, wander
+			// No target, wander
 			aiInput.PatternTime += deltaTime
 			targetX = entity.X + math.Cos(aiInput.PatternTime)*50
 			targetY = entity.Y + math.Sin(aiInput.PatternTime)*50
@@ -43,9 +56,9 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 
 	case EnemyTypeShooter:
 		// Shooter: chase but keep some distance, shoot
-		if player != nil && player.Active {
-			dx := player.X - entity.X
-			dy := player.Y - entity.Y
+		if targetEntity != nil && targetEntity.Active {
+			dx := targetEntity.X - entity.X
+			dy := targetEntity.Y - entity.Y
 			distance := math.Sqrt(dx*dx + dy*dy)
 
 			if distance > 0 {
@@ -57,13 +70,13 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 					targetY = entity.Y - dy/distance*50
 				} else {
 					// Move closer
-					targetX = player.X
-					targetY = player.Y
+					targetX = targetEntity.X
+					targetY = targetEntity.Y
 				}
 				
 				// Calculate predictive aim target for shooting
 				aimX, aimY, _ := GetAimPoint(entity)
-				predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, player)
+				predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, targetEntity)
 				// Store predicted target for rendering
 				aiInput.TargetX = predictedX
 				aiInput.TargetY = predictedY
@@ -73,7 +86,7 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 				aiInput.TargetY = targetY
 			}
 		} else {
-			// No player, wander
+			// No target, wander
 			aiInput.PatternTime += deltaTime
 			targetX = entity.X + math.Cos(aiInput.PatternTime)*50
 			targetY = entity.Y + math.Sin(aiInput.PatternTime)*50
@@ -89,9 +102,22 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 		aiInput.TargetY = targetY
 	}
 
-	// Calculate desired rotation to face movement target (not aim target)
-	dx := targetX - entity.X
-	dy := targetY - entity.Y
+	// Calculate desired rotation
+	// For shooters, rotate towards predictive aim target (for shooting)
+	// For others, rotate towards movement target
+	var rotationTargetX, rotationTargetY float64
+	if aiInput.EnemyType == EnemyTypeShooter && (targetEntity != nil || (player != nil && player.Active && GetEntityFaction(player) == targetFaction)) {
+		// Use predictive aim target for rotation (so ship aims where it will shoot)
+		rotationTargetX = aiInput.TargetX
+		rotationTargetY = aiInput.TargetY
+	} else {
+		// Use movement target for rotation
+		rotationTargetX = targetX
+		rotationTargetY = targetY
+	}
+
+	dx := rotationTargetX - entity.X
+	dy := rotationTargetY - entity.Y
 	distance := math.Sqrt(dx*dx + dy*dy)
 
 	if distance > 1.0 {

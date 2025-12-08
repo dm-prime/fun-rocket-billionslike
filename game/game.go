@@ -72,6 +72,7 @@ func (g *Game) createPlayer() {
 		ShipTypePlayer,
 		playerInput,
 	)
+	g.player.Faction = FactionPlayer // Set player faction
 	g.world.RegisterEntity(g.player)
 
 	// Center camera on player
@@ -131,6 +132,9 @@ func (g *Game) respawnPlayer() {
 
 		// Reset age
 		g.player.Age = 0.0
+		
+		// Reset faction
+		g.player.Faction = FactionPlayer
 
 		// Ensure player is active
 		g.player.Active = true
@@ -277,61 +281,80 @@ func (g *Game) spawnEnemy() {
 	g.world.RegisterEntity(enemy)
 }
 
-// spawnProjectile spawns a projectile from an entity
+// spawnProjectile spawns a projectile from an entity using weapon types
 func (g *Game) spawnProjectile(entity *Entity) {
 	// Determine spawn position and rotation
 	var spawnX, spawnY float64
 	var shootRotation float64
+	var weaponType WeaponType
 	
-	// Check if this is the player with turret mounts
-	if entity.Type == EntityTypePlayer {
-		shipConfig := GetShipTypeConfig(entity.ShipType)
-		var activeMount *TurretMountPoint
-		for i := range shipConfig.TurretMounts {
-			if shipConfig.TurretMounts[i].Active {
-				activeMount = &shipConfig.TurretMounts[i]
-				break
-			}
+	shipConfig := GetShipTypeConfig(entity.ShipType)
+	
+	// Try to get weapon type from active turret mount
+	var activeMount *TurretMountPoint
+	for i := range shipConfig.TurretMounts {
+		if shipConfig.TurretMounts[i].Active {
+			activeMount = &shipConfig.TurretMounts[i]
+			break
+		}
+	}
+	
+	if activeMount != nil {
+		// Calculate turret position relative to ship center
+		cosRot := math.Cos(entity.Rotation)
+		sinRot := math.Sin(entity.Rotation)
+		
+		// Transform mount offset from ship-local to world coordinates
+		mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
+		mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
+		
+		// Use turret rotation for shooting direction
+		if playerInput, ok := entity.Input.(*PlayerInput); ok {
+			shootRotation = playerInput.TurretRotation
+		} else {
+			shootRotation = entity.Rotation + activeMount.Angle
 		}
 		
-		if activeMount != nil {
-			// Calculate turret position relative to ship center
-			cosRot := math.Cos(entity.Rotation)
-			sinRot := math.Sin(entity.Rotation)
-			
-			// Transform mount offset from ship-local to world coordinates
-			mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
-			mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
-			
-			// Use turret rotation for shooting direction
-			if playerInput, ok := entity.Input.(*PlayerInput); ok {
-				shootRotation = playerInput.TurretRotation
-			} else {
-				shootRotation = entity.Rotation + activeMount.Angle
-			}
-			
-			// Calculate turret mount position in world coordinates
-			turretX := entity.X + mountX
-			turretY := entity.Y + mountY
-			
-			// Spawn position is at the end of the barrel (turret position + barrel length in turret direction)
-			spawnX = turretX + math.Cos(shootRotation)*activeMount.BarrelLength
-			spawnY = turretY + math.Sin(shootRotation)*activeMount.BarrelLength
-		} else {
-			// Fallback to center shooting
-			spawnOffset := entity.Radius + 8.0
-			spawnX = entity.X + math.Cos(entity.Rotation)*spawnOffset
-			spawnY = entity.Y + math.Sin(entity.Rotation)*spawnOffset
-			shootRotation = entity.Rotation
-		}
+		// Calculate turret mount position in world coordinates
+		turretX := entity.X + mountX
+		turretY := entity.Y + mountY
+		
+		// Spawn position is at the end of the barrel (turret position + barrel length in turret direction)
+		spawnX = turretX + math.Cos(shootRotation)*activeMount.BarrelLength
+		spawnY = turretY + math.Sin(shootRotation)*activeMount.BarrelLength
+		
+		// Get weapon type from turret mount
+		weaponType = activeMount.WeaponType
 	} else {
-		// Enemy shooting from center
+		// No active turret, use default weapon type and shoot from center
+		weaponType = shipConfig.DefaultWeaponType
 		spawnOffset := entity.Radius + 8.0
 		spawnX = entity.X + math.Cos(entity.Rotation)*spawnOffset
 		spawnY = entity.Y + math.Sin(entity.Rotation)*spawnOffset
 		shootRotation = entity.Rotation
 	}
 	
+	// Spawn weapon projectile based on weapon type
+	g.spawnWeaponProjectile(weaponType, spawnX, spawnY, shootRotation, entity)
+}
+
+// spawnWeaponProjectile spawns a projectile based on weapon type
+func (g *Game) spawnWeaponProjectile(weaponType WeaponType, spawnX, spawnY, rotation float64, owner *Entity) {
+	weaponConfig := GetWeaponConfig(weaponType)
+	
+	switch weaponType {
+	case WeaponTypeBullet:
+		g.spawnBullet(spawnX, spawnY, rotation, owner, weaponConfig)
+	case WeaponTypeHomingMissile:
+		g.spawnHomingMissile(spawnX, spawnY, rotation, owner, weaponConfig)
+	default:
+		// Fallback to bullet
+		g.spawnBullet(spawnX, spawnY, rotation, owner, GetWeaponConfig(WeaponTypeBullet))
+	}
+}
+
+// spawnBullet spawns a bullet projectile
+func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weaponConfig WeaponConfig) {
 	if len(g.projectiles) >= g.maxProjectiles {
 		// Reuse oldest projectile
 		projectile := g.projectiles[0]
@@ -342,38 +365,59 @@ func (g *Game) spawnProjectile(entity *Entity) {
 		projectile.X = spawnX
 		projectile.Y = spawnY
 		projectile.Active = true
-		projectile.Health = 1.0
+		projectile.Health = weaponConfig.Damage
 		projectile.Type = EntityTypeProjectile
-		projectile.Radius = 2.5 // Smaller bullets
+		projectile.Radius = weaponConfig.Radius
 		projectile.Input = nil // Projectiles don't need input
 		projectile.Age = 0.0 // Reset age
-		projectile.Owner = entity // Track who fired this projectile
+		projectile.Owner = owner // Track who fired this projectile
+		projectile.Faction = GetEntityFaction(owner) // Inherit faction from owner
 
 		// Set velocity based on shoot rotation
-		speed := 500.0
-		projectile.VX = math.Cos(shootRotation) * speed
-		projectile.VY = math.Sin(shootRotation) * speed
-		projectile.Rotation = shootRotation // Set projectile rotation to match direction
+		projectile.VX = math.Cos(rotation) * weaponConfig.ProjectileSpeed
+		projectile.VY = math.Sin(rotation) * weaponConfig.ProjectileSpeed
+		projectile.Rotation = rotation // Set projectile rotation to match direction
 
 		g.world.RegisterEntity(projectile)
 		g.projectiles = append(g.projectiles, projectile)
 	} else {
 		// Create new projectile
-		projectile := NewEntity(spawnX, spawnY, 2.5, EntityTypeProjectile, nil) // Smaller bullets
-		projectile.Health = 1.0
-		projectile.MaxHealth = 1.0
+		projectile := NewEntity(spawnX, spawnY, weaponConfig.Radius, EntityTypeProjectile, nil)
+		projectile.Health = weaponConfig.Damage
+		projectile.MaxHealth = weaponConfig.Damage
 		projectile.Age = 0.0 // Initialize age
-		projectile.Owner = entity // Track who fired this projectile
+		projectile.Owner = owner // Track who fired this projectile
+		projectile.Faction = GetEntityFaction(owner) // Inherit faction from owner
 
 		// Set velocity based on shoot rotation
-		speed := 500.0
-		projectile.VX = math.Cos(shootRotation) * speed
-		projectile.VY = math.Sin(shootRotation) * speed
-		projectile.Rotation = shootRotation // Set projectile rotation to match direction
+		projectile.VX = math.Cos(rotation) * weaponConfig.ProjectileSpeed
+		projectile.VY = math.Sin(rotation) * weaponConfig.ProjectileSpeed
+		projectile.Rotation = rotation // Set projectile rotation to match direction
 
 		g.world.RegisterEntity(projectile)
 		g.projectiles = append(g.projectiles, projectile)
 	}
+}
+
+// spawnHomingMissile spawns a homing enemy (missile) that targets the opposite faction
+func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entity, weaponConfig WeaponConfig) {
+	// Determine faction of the owner
+	ownerFaction := GetEntityFaction(owner)
+	
+	// Spawn homing entity with same faction as owner
+	homingEnemyType := EnemyTypeHomingSuicide
+	homingShipType := GetShipTypeForEnemyType(homingEnemyType)
+	
+	homingAI := CreateEnemyAIWithType(homingEnemyType)
+	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
+	homingEnemy.Faction = ownerFaction // Inherit faction from owner
+	
+	// Give the homing enemy initial velocity in the shooting direction
+	homingEnemy.VX = math.Cos(rotation) * weaponConfig.InitialVelocity
+	homingEnemy.VY = math.Sin(rotation) * weaponConfig.InitialVelocity
+	homingEnemy.Rotation = rotation
+	
+	g.world.RegisterEntity(homingEnemy)
 }
 
 // Update updates the game state

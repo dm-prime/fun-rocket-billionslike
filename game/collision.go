@@ -68,21 +68,22 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		return
 	}
 
-	// Check if either entity is a homing suicide enemy colliding with player
-	if e1.Type == EntityTypeEnemy && e2.Type == EntityTypePlayer {
-		if aiInput, ok := e1.Input.(*AIInput); ok && aiInput.EnemyType == EnemyTypeHomingSuicide {
-			// Suicide enemy explodes on contact with player
-			e2.Health -= 50.0 // Damage player
-			e1.Active = false  // Destroy enemy
+	// Check if either entity is a homing suicide enemy colliding with opposite faction
+	// Homing suicide enemies explode on contact with opposite faction
+	if e1.ShipType == ShipTypeHomingSuicide && e2.ShipType != ShipTypeHomingSuicide {
+		if GetEntityFaction(e1) != GetEntityFaction(e2) {
+			// Different factions - homing suicide explodes
+			e2.Health -= 50.0 // Damage target
+			e1.Active = false  // Destroy homing enemy
 			e1.Health = 0
 			return
 		}
 	}
-	if e1.Type == EntityTypePlayer && e2.Type == EntityTypeEnemy {
-		if aiInput, ok := e2.Input.(*AIInput); ok && aiInput.EnemyType == EnemyTypeHomingSuicide {
-			// Suicide enemy explodes on contact with player
-			e1.Health -= 50.0 // Damage player
-			e2.Active = false // Destroy enemy
+	if e2.ShipType == ShipTypeHomingSuicide && e1.ShipType != ShipTypeHomingSuicide {
+		if GetEntityFaction(e1) != GetEntityFaction(e2) {
+			// Different factions - homing suicide explodes
+			e1.Health -= 50.0 // Damage target
+			e2.Active = false  // Destroy homing enemy
 			e2.Health = 0
 			return
 		}

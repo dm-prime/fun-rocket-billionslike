@@ -325,23 +325,26 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 		}
 	} else if entity.Type == EntityTypeEnemy {
 		// Enemies target the player (with predictive aiming for shooters)
+		// Skip drawing aim lines for homing enemies
 		if player != nil && player.Active {
 			// Check if this enemy has AI input with target info
 			if aiInput, ok := entity.Input.(*AIInput); ok {
-				// Use stored target (which may be predictive for shooters)
-				targetX = aiInput.TargetX
-				targetY = aiInput.TargetY
-				hasTarget = true
-			} else {
-				// Fallback to current player position
-				targetX = player.X
-				targetY = player.Y
-				hasTarget = true
-			}
+				// Only show aim lines for shooter enemies, not homing enemies
+				if aiInput.EnemyType == EnemyTypeShooter {
+					// Use stored target (which may be predictive for shooters)
+					targetX = aiInput.TargetX
+					targetY = aiInput.TargetY
+					hasTarget = true
 
-			// For enemies, aim from ship center (they shoot from center)
-			aimPointX = entity.X
-			aimPointY = entity.Y
+					// For enemies, aim from ship center (they shoot from center)
+					aimPointX = entity.X
+					aimPointY = entity.Y
+				}
+				// Skip homing enemies - don't set hasTarget
+			} else {
+				// Fallback: only show if we can't determine enemy type (shouldn't happen)
+				// But skip to be safe
+			}
 		}
 	}
 
