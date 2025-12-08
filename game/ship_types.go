@@ -41,6 +41,9 @@ type ShipTypeConfig struct {
 	Friction            float64 // Velocity damping factor (0-1, higher = less friction)
 	// Weapon properties
 	DefaultWeaponType WeaponType // Default weapon type for ships without turrets
+
+	// Score value when destroyed
+	Score int
 }
 
 // ShipShape defines the visual shape of a ship
@@ -70,6 +73,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			MaxAngularSpeed:     3.0,              // Radians per second
 			Friction:            0.98,             // Slight friction
 			DefaultWeaponType:   WeaponTypeBullet, // Fallback weapon type
+			Score:               50,               // Player doesn't give score
 			TurretMounts: []TurretMountPoint{
 				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeBullet},        // Right mount (active) - bullets
 				{OffsetX: 16.0, OffsetY: 0.0, Angle: 0.0, Active: true, BarrelLength: 10.0, WeaponType: WeaponTypeHomingMissile}, // Front mount (active) - rockets
@@ -91,6 +95,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			MaxAngularSpeed:     2.5,                  // Radians per second
 			Friction:            0.97,                 // Moderate friction
 			DefaultWeaponType:   WeaponTypeNone,       // Not used (doesn't shoot)
+			Score:               10,                   // Small score for easy enemies
 			TurretMounts:        []TurretMountPoint{}, // No turrets
 		}
 	case ShipTypeShooter:
@@ -107,6 +112,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			MaxAngularSpeed:     2.0,                     // Radians per second
 			Friction:            0.96,                    // More friction
 			DefaultWeaponType:   WeaponTypeHomingMissile, // Spawns homing enemies
+			Score:               25,                      // Higher score for tougher enemies
 			TurretMounts: []TurretMountPoint{
 				{OffsetX: 0.0, OffsetY: 0.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeHomingMissile},
 			}, // No turrets (shoots from center)

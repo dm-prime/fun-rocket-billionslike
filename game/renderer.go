@@ -1,11 +1,15 @@
 package game
 
 import (
+	"bytes"
+	"fmt"
 	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 // Camera represents the viewport into the world
@@ -95,18 +99,21 @@ func (c *Camera) GetVisibleCells(world *World) []*Cell {
 
 // Renderer handles rendering of game entities
 type Renderer struct {
-	camera *Camera
+	camera     *Camera
+	faceSource *text.GoTextFaceSource
 }
 
 // NewRenderer creates a new renderer
 func NewRenderer(camera *Camera) *Renderer {
+	faceSource, _ := text.NewGoTextFaceSource(bytes.NewReader(goregular.TTF))
 	return &Renderer{
-		camera: camera,
+		camera:     camera,
+		faceSource: faceSource,
 	}
 }
 
 // Render renders all visible entities
-func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity) {
+func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, score int) {
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
@@ -119,6 +126,9 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity) {
 			r.RenderEntity(screen, entity, player)
 		}
 	}
+
+	// Render UI (score and restart message)
+	r.RenderUI(screen, player, score)
 }
 
 // RenderEntity renders a single entity
@@ -481,4 +491,42 @@ func (r *Renderer) drawDiamond(screen *ebiten.Image, x, y, radius, rotation floa
 		vector.StrokeLine(screen, float32(centerX), float32(centerY),
 			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
 	}
+}
+
+// RenderUI renders the user interface (score, restart message, etc.)
+func (r *Renderer) RenderUI(screen *ebiten.Image, player *Entity, score int) {
+	// Always show score
+	scoreText := fmt.Sprintf("Score: %d", score)
+	r.drawText(screen, scoreText, 10, 30, color.RGBA{255, 255, 255, 255})
+
+	// Show restart message if player is dead
+	if player == nil || !player.Active || player.Health <= 0 {
+		restartText := "[R] to Restart"
+		textWidth := r.measureText(restartText)
+		textX := (r.camera.Width - textWidth) / 2
+		textY := r.camera.Height / 2
+		r.drawText(screen, restartText, textX, textY, color.RGBA{255, 255, 0, 255})
+	}
+}
+
+// drawText draws text on the screen
+func (r *Renderer) drawText(screen *ebiten.Image, str string, x, y float64, clr color.Color) {
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(x, y)
+	op.ColorScale.ScaleWithColor(clr)
+	face := &text.GoTextFace{
+		Source: r.faceSource,
+		Size:   16,
+	}
+	text.Draw(screen, str, face, op)
+}
+
+// measureText measures the width of text
+func (r *Renderer) measureText(str string) float64 {
+	face := &text.GoTextFace{
+		Source: r.faceSource,
+		Size:   16,
+	}
+	_, advance := text.Measure(str, face, 0)
+	return advance
 }

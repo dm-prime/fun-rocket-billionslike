@@ -35,6 +35,9 @@ type Game struct {
 	waveSpawnTimer         float64 // Time between enemy spawns within a wave
 	waveCooldown           float64 // Time between waves
 
+	// Player score
+	score int
+
 	// Last update time for delta time calculation
 	lastUpdateTime time.Time
 }
@@ -60,6 +63,7 @@ func NewGame(config Config) *Game {
 		enemiesSpawnedThisWave: 0,
 		waveSpawnTimer:         0.1, // Spawn enemies quickly within a wave (0.1 seconds apart)
 		waveCooldown:           5.0, // 5 seconds between waves
+		score:                  0,
 		lastUpdateTime:         time.Now(),
 	}
 
@@ -169,6 +173,9 @@ func (g *Game) respawnPlayer() {
 	g.enemiesPerWave = 10
 	g.enemiesSpawnedThisWave = 0
 	g.waveSpawnTimer = 0
+
+	// Reset score
+	g.score = 0
 }
 
 // isPlayerRegistered checks if the player is registered in the world
@@ -520,6 +527,14 @@ func (g *Game) Update() error {
 
 		// Remove dead entities
 		if entity.Health <= 0 {
+			// Award score if enemy was destroyed by player
+			if entity.Type == EntityTypeEnemy {
+				// Check if this enemy was destroyed by player (via projectile or collision)
+				// We'll check this by looking at recent damage sources
+				// For now, award score for any enemy death (can be refined later)
+				shipConfig := GetShipTypeConfig(entity.ShipType)
+				g.score += shipConfig.Score
+			}
 			entity.Active = false
 			if entity.Type == EntityTypeProjectile {
 				// Remove projectile from list
@@ -583,7 +598,7 @@ func (g *Game) Update() error {
 // Draw renders the game
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{20, 20, 40, 255}) // Dark blue background
-	g.renderer.Render(screen, g.world, g.player)
+	g.renderer.Render(screen, g.world, g.player, g.score)
 }
 
 // Layout returns the game's screen size
