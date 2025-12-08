@@ -200,7 +200,7 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 	// Draw turret mount points (only for ships, not projectiles)
 	if entity.Type != EntityTypeProjectile {
 		shipConfig := GetShipTypeConfig(entity.ShipType)
-		for _, mount := range shipConfig.TurretMounts {
+		for turretIndex, mount := range shipConfig.TurretMounts {
 			// Only draw active turrets
 			if !mount.Active {
 				continue
@@ -239,11 +239,15 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			vector.StrokeCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), 1.5, turretColor, true)
 
 			// Draw turret barrel (line showing direction)
-			// For player, use turret rotation; for others, use ship rotation + mount angle
+			// For player, use per-turret rotation; for others, use ship rotation + mount angle
 			var turretRotation float64
 			if entity.Type == EntityTypePlayer {
 				if playerInput, ok := entity.Input.(*PlayerInput); ok {
-					turretRotation = playerInput.TurretRotation
+					// Use per-turret rotation if available, fallback to ship rotation + mount angle
+					turretRotation = playerInput.GetTurretRotation(turretIndex)
+					if turretRotation == 0.0 {
+						turretRotation = entity.Rotation + mount.Angle
+					}
 				} else {
 					turretRotation = entity.Rotation + mount.Angle
 				}
@@ -300,35 +304,41 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 
 	// Determine target based on entity type
 	if entity.Type == EntityTypePlayer {
-		// Player targets enemies
+		// Player targets enemies - draw aim lines for each turret
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			if playerInput.HasTarget() {
-				targetX = playerInput.TargetX
-				targetY = playerInput.TargetY
-				hasTarget = true
-
-				// Get turret position for aim point
-				var activeMount *TurretMountPoint
-				for i := range shipConfig.TurretMounts {
-					if shipConfig.TurretMounts[i].Active {
-						activeMount = &shipConfig.TurretMounts[i]
-						break
-					}
+			// Draw aim line for each turret that has a target
+			for turretIndex, mount := range shipConfig.TurretMounts {
+				if !mount.Active {
+					continue
 				}
+				turretTarget := playerInput.GetTurretTarget(turretIndex)
+				if turretTarget.HasTarget {
+					targetX = turretTarget.TargetX
+					targetY = turretTarget.TargetY
+					hasTarget = true
 
-				if activeMount != nil {
+					// Calculate turret position for aim point
 					cosRot := math.Cos(entity.Rotation)
 					sinRot := math.Sin(entity.Rotation)
-					mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
-					mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
+					mountX := mount.OffsetX*cosRot - mount.OffsetY*sinRot
+					mountY := mount.OffsetX*sinRot + mount.OffsetY*cosRot
 					aimPointX = entity.X + mountX
 					aimPointY = entity.Y + mountY
-				} else {
-					// Fallback to ship center
-					aimPointX = entity.X
-					aimPointY = entity.Y
+
+					// Draw aim line for this turret with transparency
+					aimSx, aimSy := r.camera.WorldToScreen(aimPointX, aimPointY)
+					targetSx, targetSy := r.camera.WorldToScreen(targetX, targetY)
+					r.drawTransparentLine(screen, aimSx, aimSy, targetSx, targetSy, color.RGBA{255, 255, 0, 30})
+
+					targetRadius := 3.0 * r.camera.Zoom
+					if targetRadius < 1.5 {
+						targetRadius = 1.5
+					}
+					r.drawTransparentCircle(screen, targetSx, targetSy, targetRadius, color.RGBA{255, 255, 0, 30})
 				}
 			}
+			// Return early since we've drawn all turret aim lines
+			return
 		}
 	} else if entity.Type == EntityTypeEnemy {
 		// Enemies target the player (with predictive aiming for shooters)
@@ -361,24 +371,21 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 		aimSx, aimSy := r.camera.WorldToScreen(aimPointX, aimPointY)
 		targetSx, targetSy := r.camera.WorldToScreen(targetX, targetY)
 
-		// Draw aim line (dashed or solid line)
-		// Use a transparent color
-		aimColor := color.RGBA{255, 255, 0, 64} // Yellow, transparent
+		// Draw aim line with transparency
+		aimColor := color.RGBA{255, 255, 0, 30} // Yellow, very transparent
 		if entity.Type == EntityTypeEnemy {
-			aimColor = color.RGBA{255, 100, 100, 64} // Light red for enemies, transparent
+			aimColor = color.RGBA{255, 100, 100, 30} // Light red for enemies, very transparent
 		}
 
 		// Draw line from aim point to target
-		vector.StrokeLine(screen, float32(aimSx), float32(aimSy),
-			float32(targetSx), float32(targetSy), 1.5, aimColor, true)
+		r.drawTransparentLine(screen, aimSx, aimSy, targetSx, targetSy, aimColor)
 
 		// Draw small circle at target position
 		targetRadius := 3.0 * r.camera.Zoom
 		if targetRadius < 1.5 {
 			targetRadius = 1.5
 		}
-		vector.StrokeCircle(screen, float32(targetSx), float32(targetSy),
-			float32(targetRadius), 1.5, aimColor, true)
+		r.drawTransparentCircle(screen, targetSx, targetSy, targetRadius, aimColor)
 	}
 }
 
@@ -529,4 +536,56 @@ func (r *Renderer) measureText(str string) float64 {
 	}
 	_, advance := text.Measure(str, face, 0)
 	return advance
+}
+
+// drawTransparentLine draws a line with proper alpha transparency
+func (r *Renderer) drawTransparentLine(screen *ebiten.Image, x1, y1, x2, y2 float64, clr color.RGBA) {
+	// Calculate line bounds
+	minX := math.Min(x1, x2) - 2
+	maxX := math.Max(x1, x2) + 2
+	minY := math.Min(y1, y2) - 2
+	maxY := math.Max(y1, y2) + 2
+
+	width := int(maxX - minX)
+	height := int(maxY - minY)
+	if width <= 0 || height <= 0 {
+		return
+	}
+
+	// Create temporary image for the line
+	lineImg := ebiten.NewImage(width, height)
+
+	// Draw line on temporary image
+	lineX1 := float32(x1 - minX)
+	lineY1 := float32(y1 - minY)
+	lineX2 := float32(x2 - minX)
+	lineY2 := float32(y2 - minY)
+	vector.StrokeLine(lineImg, lineX1, lineY1, lineX2, lineY2, 1.5, clr, true)
+
+	// Draw temporary image to screen with alpha
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(minX, minY)
+	op.ColorM.Scale(1, 1, 1, float64(clr.A)/255.0)
+	screen.DrawImage(lineImg, op)
+}
+
+// drawTransparentCircle draws a circle outline with proper alpha transparency
+func (r *Renderer) drawTransparentCircle(screen *ebiten.Image, x, y, radius float64, clr color.RGBA) {
+	// Create temporary image for the circle
+	size := int(radius*2 + 4)
+	if size <= 0 {
+		return
+	}
+	circleImg := ebiten.NewImage(size, size)
+
+	// Draw circle on temporary image
+	centerX := float32(radius + 2)
+	centerY := float32(radius + 2)
+	vector.StrokeCircle(circleImg, centerX, centerY, float32(radius), 1.5, clr, true)
+
+	// Draw temporary image to screen with alpha
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x-radius-2, y-radius-2)
+	op.ColorM.Scale(1, 1, 1, float64(clr.A)/255.0)
+	screen.DrawImage(circleImg, op)
 }

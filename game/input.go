@@ -27,16 +27,21 @@ type InputProvider interface {
 type PlayerInput struct {
 	keys []ebiten.Key
 
-	// Target acquisition AI
-	TargetX, TargetY float64
-	hasTarget        bool
-	MaxTargetRange   float64 // Maximum range to acquire targets
+	// Target acquisition AI (per turret)
+	TurretTargets map[int]TurretTarget // Target info per turret index
+	MaxTargetRange float64              // Maximum range to acquire targets
 
-	// Turret rotation (for active turret)
-	TurretRotation float64 // Current rotation of the active turret
+	// Turret rotations (per turret index)
+	TurretRotations map[int]float64 // Current rotation of each turret
 
 	// Weapon cooldowns (tracked per weapon type)
 	WeaponCooldowns map[WeaponType]float64 // Time since last shot per weapon type
+}
+
+// TurretTarget contains target information for a single turret
+type TurretTarget struct {
+	TargetX, TargetY float64
+	HasTarget        bool
 }
 
 // NewPlayerInput creates a new player input provider
@@ -44,8 +49,8 @@ func NewPlayerInput() *PlayerInput {
 	return &PlayerInput{
 		keys:            make([]ebiten.Key, 0, 10),
 		MaxTargetRange:  1000.0, // 1000 pixels max range
-		hasTarget:       false,
-		TurretRotation:  0.0,
+		TurretTargets:   make(map[int]TurretTarget),
+		TurretRotations: make(map[int]float64),
 		WeaponCooldowns: make(map[WeaponType]float64),
 	}
 }
@@ -87,9 +92,30 @@ func (p *PlayerInput) ShouldShoot() bool {
 	return ebiten.IsKeyPressed(ebiten.KeySpace)
 }
 
-// HasTarget returns true if the player has a valid target
+// HasTarget returns true if the player has a valid target (for any turret)
 func (p *PlayerInput) HasTarget() bool {
-	return p.hasTarget
+	for _, target := range p.TurretTargets {
+		if target.HasTarget {
+			return true
+		}
+	}
+	return false
+}
+
+// GetTurretTarget returns target info for a specific turret index
+func (p *PlayerInput) GetTurretTarget(turretIndex int) TurretTarget {
+	if target, ok := p.TurretTargets[turretIndex]; ok {
+		return target
+	}
+	return TurretTarget{HasTarget: false}
+}
+
+// GetTurretRotation returns the rotation for a specific turret index
+func (p *PlayerInput) GetTurretRotation(turretIndex int) float64 {
+	if rotation, ok := p.TurretRotations[turretIndex]; ok {
+		return rotation
+	}
+	return 0.0
 }
 
 // ResetWeaponCooldown resets cooldown for a specific weapon type

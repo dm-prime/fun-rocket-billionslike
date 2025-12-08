@@ -137,9 +137,10 @@ func (g *Game) respawnPlayer() {
 		// Reset rotation
 		g.player.Rotation = 0
 
-		// Reset turret rotation
+		// Reset turret rotations
 		if playerInput, ok := g.player.Input.(*PlayerInput); ok {
-			playerInput.TurretRotation = 0.0
+			playerInput.TurretRotations = make(map[int]float64)
+			playerInput.TurretTargets = make(map[int]TurretTarget)
 		}
 
 		// Restore health
@@ -191,75 +192,108 @@ func (g *Game) isPlayerRegistered() bool {
 	return false
 }
 
-// updatePlayerTargeting finds the nearest enemy and updates turret rotation to face it
+// updatePlayerTargeting finds the nearest enemy for each turret and updates turret rotation to face it
+// Each turret targets a different enemy to split fire
 func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64) {
 	if g.player == nil || !g.player.Active {
-		playerInput.hasTarget = false
+		// Clear all turret targets
+		playerInput.TurretTargets = make(map[int]TurretTarget)
 		return
 	}
 
-	// Find nearest enemy (opposite faction)
-	var nearestEnemy *Entity
-	nearestDistance := playerInput.MaxTargetRange
+	shipConfig := GetShipTypeConfig(g.player.ShipType)
 	playerFaction := GetEntityFaction(g.player)
 
-	// Search through all entities to find nearest enemy of opposite faction
-	for _, entity := range g.world.AllEntities {
-		if !entity.Active || entity.Health <= 0 {
+	// Calculate ship rotation transforms once
+	cosRot := math.Cos(g.player.Rotation)
+	sinRot := math.Sin(g.player.Rotation)
+
+	// Track which enemies are already targeted by other turrets
+	targetedEnemies := make(map[*Entity]bool)
+
+	// Process each turret separately
+	for turretIndex, mount := range shipConfig.TurretMounts {
+		if !mount.Active {
 			continue
 		}
 
-		// Only target entities of opposite faction
-		entityFaction := GetEntityFaction(entity)
-		if entityFaction == playerFaction {
-			continue // Skip friendly entities
+		// Calculate turret position in world coordinates
+		mountX := mount.OffsetX*cosRot - mount.OffsetY*sinRot
+		mountY := mount.OffsetX*sinRot + mount.OffsetY*cosRot
+		turretX := g.player.X + mountX
+		turretY := g.player.Y + mountY
+
+		// Find nearest enemy from this turret's position that isn't already targeted
+		var nearestEnemy *Entity
+		nearestDistance := playerInput.MaxTargetRange
+
+		// Search through all entities to find nearest enemy of opposite faction
+		for _, entity := range g.world.AllEntities {
+			if !entity.Active || entity.Health <= 0 {
+				continue
+			}
+
+			// Only target entities of opposite faction
+			entityFaction := GetEntityFaction(entity)
+			if entityFaction == playerFaction {
+				continue // Skip friendly entities
+			}
+
+			// Skip enemies already targeted by other turrets
+			if targetedEnemies[entity] {
+				continue
+			}
+
+			// Calculate distance from turret position to enemy
+			dx := entity.X - turretX
+			dy := entity.Y - turretY
+			distance := math.Sqrt(dx*dx + dy*dy)
+
+			if distance < nearestDistance {
+				nearestDistance = distance
+				nearestEnemy = entity
+			}
 		}
 
-		dx := entity.X - g.player.X
-		dy := entity.Y - g.player.Y
-		distance := math.Sqrt(dx*dx + dy*dy)
+		// Update target and rotate turret
+		if nearestEnemy != nil {
+			// Mark this enemy as targeted
+			targetedEnemies[nearestEnemy] = true
 
-		if distance < nearestDistance {
-			nearestDistance = distance
-			nearestEnemy = entity
-		}
-	}
+			// Calculate predictive aim target from this turret's position
+			predictedX, predictedY := CalculatePredictiveAim(turretX, turretY, nearestEnemy)
 
-	// Update target and rotate turret (not ship)
-	if nearestEnemy != nil {
-		// Get aim point (turret position or ship center)
-		aimX, aimY, hasTurret := GetAimPoint(g.player)
-
-		if hasTurret {
-			// Calculate predictive aim target
-			predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, nearestEnemy)
-
-			// Store predicted target position
-			playerInput.TargetX = predictedX
-			playerInput.TargetY = predictedY
-			playerInput.hasTarget = true
+			// Store predicted target position for this turret
+			playerInput.TurretTargets[turretIndex] = TurretTarget{
+				TargetX:   predictedX,
+				TargetY:   predictedY,
+				HasTarget: true,
+			}
 
 			// Calculate angle from turret to predicted target
-			turretDx := predictedX - aimX
-			turretDy := predictedY - aimY
+			turretDx := predictedX - turretX
+			turretDy := predictedY - turretY
 			turretTargetRotation := math.Atan2(turretDy, turretDx)
+
+			// Get current rotation for this turret (or initialize to ship rotation + mount angle)
+			currentRotation := playerInput.GetTurretRotation(turretIndex)
+			if currentRotation == 0.0 {
+				currentRotation = g.player.Rotation + mount.Angle
+			}
 
 			// Smoothly rotate turret towards target
 			maxTurretAngularVelocity := 8.0 // radians per second (faster than ship)
-			playerInput.TurretRotation = RotateTowardsTarget(
-				playerInput.TurretRotation,
+			newRotation := RotateTowardsTarget(
+				currentRotation,
 				turretTargetRotation,
 				maxTurretAngularVelocity,
 				deltaTime,
 			)
+			playerInput.TurretRotations[turretIndex] = newRotation
 		} else {
-			// No turret, just store target position
-			playerInput.TargetX = nearestEnemy.X
-			playerInput.TargetY = nearestEnemy.Y
-			playerInput.hasTarget = true
+			// No target for this turret
+			playerInput.TurretTargets[turretIndex] = TurretTarget{HasTarget: false}
 		}
-	} else {
-		playerInput.hasTarget = false
 	}
 }
 
@@ -356,7 +390,11 @@ func (g *Game) spawnProjectile(entity *Entity) {
 		// Use turret rotation for shooting direction (or ship rotation + mount angle for AI)
 		var shootRotation float64
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			shootRotation = playerInput.TurretRotation
+			// Use per-turret rotation, fallback to ship rotation + mount angle if not set
+			shootRotation = playerInput.GetTurretRotation(i)
+			if shootRotation == 0.0 {
+				shootRotation = entity.Rotation + mount.Angle
+			}
 			// Reset weapon cooldown after firing
 			playerInput.ResetWeaponCooldown(mount.WeaponType)
 		} else if aiInput, ok := entity.Input.(*AIInput); ok {
