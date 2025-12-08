@@ -122,6 +122,11 @@ func (c *CollisionSystem) HandleProjectileCollision(projectile, target *Entity) 
 		return
 	}
 
+	// Don't hit the owner of the projectile (player bullets can't hit player)
+	if projectile.Owner != nil && projectile.Owner == target {
+		return
+	}
+
 	// Ignore collisions for very young projectiles (avoid immediate collision with shooter)
 	if projectile.Age < 0.05 { // 50ms grace period
 		return

@@ -44,6 +44,9 @@ type Entity struct {
 
 	// Time since creation (for projectiles to avoid immediate collision with shooter)
 	Age float64
+
+	// Owner entity (for projectiles, tracks who fired them)
+	Owner *Entity
 }
 
 // EntityType identifies the type of entity

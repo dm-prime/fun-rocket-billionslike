@@ -30,15 +30,18 @@ type PlayerInput struct {
 	TargetX, TargetY float64
 	HasTarget        bool
 	MaxTargetRange   float64 // Maximum range to acquire targets
-	desiredRotation  float64 // Desired rotation direction (-1 to 1) for auto-targeting
+	
+	// Turret rotation (for active turret)
+	TurretRotation float64 // Current rotation of the active turret
 }
 
 // NewPlayerInput creates a new player input provider
 func NewPlayerInput() *PlayerInput {
 	return &PlayerInput{
-		keys:          make([]ebiten.Key, 0, 10),
+		keys:           make([]ebiten.Key, 0, 10),
 		MaxTargetRange: 1000.0, // 1000 pixels max range
-		HasTarget:     false,
+		HasTarget:      false,
+		TurretRotation: 0.0,
 	}
 }
 
@@ -63,17 +66,11 @@ func (p *PlayerInput) GetMovement(entityX, entityY float64) (float64, float64) {
 	return moveX, moveY
 }
 
-// GetRotation returns rotation towards target, or manual Q/E keys if no target
+// GetRotation returns manual rotation from Q/E keys
+// Ship rotation is not affected by auto-targeting, only turret rotates
 // Returns -1 to 1, where 1 is clockwise rotation
 func (p *PlayerInput) GetRotation() float64 {
-	// If we have a target, rotate towards it automatically
-	if p.HasTarget {
-		// Return desired rotation direction (-1 to 1)
-		// This will be calculated in updatePlayerTargeting
-		return p.desiredRotation
-	}
-	
-	// Fallback to manual rotation if no target
+	// Manual rotation only (Q/E keys)
 	rotationSpeed := 1.0
 	if ebiten.IsKeyPressed(ebiten.KeyQ) {
 		return -rotationSpeed

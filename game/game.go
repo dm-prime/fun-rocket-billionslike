@@ -120,6 +120,11 @@ func (g *Game) respawnPlayer() {
 
 		// Reset rotation
 		g.player.Rotation = 0
+		
+		// Reset turret rotation
+		if playerInput, ok := g.player.Input.(*PlayerInput); ok {
+			playerInput.TurretRotation = 0.0
+		}
 
 		// Restore health
 		g.player.Health = g.player.MaxHealth
@@ -165,11 +170,10 @@ func (g *Game) isPlayerRegistered() bool {
 	return false
 }
 
-// updatePlayerTargeting finds the nearest enemy and updates player rotation to face it
+// updatePlayerTargeting finds the nearest enemy and updates turret rotation to face it
 func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64) {
 	if g.player == nil || !g.player.Active {
 		playerInput.HasTarget = false
-		playerInput.desiredRotation = 0
 		return
 	}
 
@@ -193,42 +197,64 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 		}
 	}
 
-	// Update target and calculate desired rotation
+	// Update target and rotate turret (not ship)
 	if nearestEnemy != nil {
 		playerInput.TargetX = nearestEnemy.X
 		playerInput.TargetY = nearestEnemy.Y
 		playerInput.HasTarget = true
-
-		// Calculate desired rotation towards target
-		dx := nearestEnemy.X - g.player.X
-		dy := nearestEnemy.Y - g.player.Y
-		targetRotation := math.Atan2(dy, dx)
-
-		// Calculate angle difference
-		currentRotation := g.player.Rotation
-		angleDiff := targetRotation - currentRotation
 		
-		// Normalize angle difference to [-π, π]
-		for angleDiff > math.Pi {
-			angleDiff -= 2 * math.Pi
+		// Update turret rotation to face target
+		// Get active turret mount point
+		shipConfig := GetShipTypeConfig(g.player.ShipType)
+		var activeMount *TurretMountPoint
+		for i := range shipConfig.TurretMounts {
+			if shipConfig.TurretMounts[i].Active {
+				activeMount = &shipConfig.TurretMounts[i]
+				break
+			}
 		}
-		for angleDiff < -math.Pi {
-			angleDiff += 2 * math.Pi
-		}
-
-		// Convert angle difference to rotation input (-1 to 1)
-		// Use a threshold to avoid jitter when already facing target
-		threshold := 0.05 // ~3 degrees
-		if math.Abs(angleDiff) < threshold {
-			playerInput.desiredRotation = 0
-		} else if angleDiff > 0 {
-			playerInput.desiredRotation = 1.0 // Rotate clockwise
-		} else {
-			playerInput.desiredRotation = -1.0 // Rotate counter-clockwise
+		
+		if activeMount != nil {
+			// Calculate turret position in world space to get accurate angle to target
+			cosRot := math.Cos(g.player.Rotation)
+			sinRot := math.Sin(g.player.Rotation)
+			mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
+			mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
+			turretWorldX := g.player.X + mountX
+			turretWorldY := g.player.Y + mountY
+			
+			// Calculate angle from turret to target
+			turretDx := nearestEnemy.X - turretWorldX
+			turretDy := nearestEnemy.Y - turretWorldY
+			turretTargetRotation := math.Atan2(turretDy, turretDx)
+			
+			// Smoothly rotate turret towards target
+			currentTurretRotation := playerInput.TurretRotation
+			turretAngleDiff := turretTargetRotation - currentTurretRotation
+			
+			// Normalize angle difference to [-π, π]
+			for turretAngleDiff > math.Pi {
+				turretAngleDiff -= 2 * math.Pi
+			}
+			for turretAngleDiff < -math.Pi {
+				turretAngleDiff += 2 * math.Pi
+			}
+			
+			// Rotate turret with maximum angular velocity
+			maxTurretAngularVelocity := 8.0 // radians per second (faster than ship)
+			turretRotationStep := turretAngleDiff
+			if math.Abs(turretRotationStep) > maxTurretAngularVelocity*deltaTime {
+				if turretRotationStep > 0 {
+					turretRotationStep = maxTurretAngularVelocity * deltaTime
+				} else {
+					turretRotationStep = -maxTurretAngularVelocity * deltaTime
+				}
+			}
+			
+			playerInput.TurretRotation += turretRotationStep
 		}
 	} else {
 		playerInput.HasTarget = false
-		playerInput.desiredRotation = 0
 	}
 }
 
@@ -276,48 +302,93 @@ func (g *Game) spawnEnemy() {
 
 // spawnProjectile spawns a projectile from an entity
 func (g *Game) spawnProjectile(entity *Entity) {
+	// Determine spawn position and rotation
+	var spawnX, spawnY float64
+	var shootRotation float64
+	
+	// Check if this is the player with turret mounts
+	if entity.Type == EntityTypePlayer {
+		shipConfig := GetShipTypeConfig(entity.ShipType)
+		var activeMount *TurretMountPoint
+		for i := range shipConfig.TurretMounts {
+			if shipConfig.TurretMounts[i].Active {
+				activeMount = &shipConfig.TurretMounts[i]
+				break
+			}
+		}
+		
+		if activeMount != nil {
+			// Calculate turret position relative to ship center
+			cosRot := math.Cos(entity.Rotation)
+			sinRot := math.Sin(entity.Rotation)
+			
+			// Transform mount offset from ship-local to world coordinates
+			mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
+			mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
+			
+			// Spawn position is at turret mount point
+			spawnX = entity.X + mountX
+			spawnY = entity.Y + mountY
+			
+			// Use turret rotation for shooting direction
+			if playerInput, ok := entity.Input.(*PlayerInput); ok {
+				shootRotation = playerInput.TurretRotation
+			} else {
+				shootRotation = entity.Rotation + activeMount.Angle
+			}
+		} else {
+			// Fallback to center shooting
+			spawnOffset := entity.Radius + 8.0
+			spawnX = entity.X + math.Cos(entity.Rotation)*spawnOffset
+			spawnY = entity.Y + math.Sin(entity.Rotation)*spawnOffset
+			shootRotation = entity.Rotation
+		}
+	} else {
+		// Enemy shooting from center
+		spawnOffset := entity.Radius + 8.0
+		spawnX = entity.X + math.Cos(entity.Rotation)*spawnOffset
+		spawnY = entity.Y + math.Sin(entity.Rotation)*spawnOffset
+		shootRotation = entity.Rotation
+	}
+	
 	if len(g.projectiles) >= g.maxProjectiles {
 		// Reuse oldest projectile
 		projectile := g.projectiles[0]
 		g.projectiles = g.projectiles[1:]
 		g.world.UnregisterEntity(projectile)
 		projectile.Reset()
-		// Spawn projectile slightly in front of entity to avoid immediate collision
-		spawnOffset := entity.Radius + 8.0
-		projectile.X = entity.X + math.Cos(entity.Rotation)*spawnOffset
-		projectile.Y = entity.Y + math.Sin(entity.Rotation)*spawnOffset
+		
+		projectile.X = spawnX
+		projectile.Y = spawnY
 		projectile.Active = true
 		projectile.Health = 1.0
 		projectile.Type = EntityTypeProjectile
-		projectile.Radius = 5.0 // Make projectiles more visible
+		projectile.Radius = 2.5 // Smaller bullets
 		projectile.Input = nil // Projectiles don't need input
 		projectile.Age = 0.0 // Reset age
+		projectile.Owner = entity // Track who fired this projectile
 
-		// Set velocity based on entity rotation
+		// Set velocity based on shoot rotation
 		speed := 500.0
-		projectile.VX = math.Cos(entity.Rotation) * speed
-		projectile.VY = math.Sin(entity.Rotation) * speed
-		projectile.Rotation = entity.Rotation // Set projectile rotation to match direction
+		projectile.VX = math.Cos(shootRotation) * speed
+		projectile.VY = math.Sin(shootRotation) * speed
+		projectile.Rotation = shootRotation // Set projectile rotation to match direction
 
 		g.world.RegisterEntity(projectile)
 		g.projectiles = append(g.projectiles, projectile)
 	} else {
 		// Create new projectile
-		// Spawn projectile slightly in front of entity to avoid immediate collision
-		spawnOffset := entity.Radius + 8.0
-		spawnX := entity.X + math.Cos(entity.Rotation)*spawnOffset
-		spawnY := entity.Y + math.Sin(entity.Rotation)*spawnOffset
-		
-		projectile := NewEntity(spawnX, spawnY, 5.0, EntityTypeProjectile, nil) // Make projectiles more visible
+		projectile := NewEntity(spawnX, spawnY, 2.5, EntityTypeProjectile, nil) // Smaller bullets
 		projectile.Health = 1.0
 		projectile.MaxHealth = 1.0
 		projectile.Age = 0.0 // Initialize age
+		projectile.Owner = entity // Track who fired this projectile
 
-		// Set velocity based on entity rotation
+		// Set velocity based on shoot rotation
 		speed := 500.0
-		projectile.VX = math.Cos(entity.Rotation) * speed
-		projectile.VY = math.Sin(entity.Rotation) * speed
-		projectile.Rotation = entity.Rotation // Set projectile rotation to match direction
+		projectile.VX = math.Cos(shootRotation) * speed
+		projectile.VY = math.Sin(shootRotation) * speed
+		projectile.Rotation = shootRotation // Set projectile rotation to match direction
 
 		g.world.RegisterEntity(projectile)
 		g.projectiles = append(g.projectiles, projectile)

@@ -179,6 +179,78 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 		vector.StrokeLine(screen, float32(sx), float32(sy), float32(endX), float32(endY), 2, clr, true)
 	}
 
+	// Draw turret mount points (only for ships, not projectiles)
+	if entity.Type != EntityTypeProjectile {
+		shipConfig := GetShipTypeConfig(entity.ShipType)
+		for _, mount := range shipConfig.TurretMounts {
+			// Only draw active turrets
+			if !mount.Active {
+				continue
+			}
+
+			// Calculate turret position relative to ship center
+			// Rotate the offset by the ship's rotation
+			cosRot := math.Cos(entity.Rotation)
+			sinRot := math.Sin(entity.Rotation)
+			
+			// Transform mount offset from ship-local to world coordinates
+			mountX := mount.OffsetX*cosRot - mount.OffsetY*sinRot
+			mountY := mount.OffsetX*sinRot + mount.OffsetY*cosRot
+			
+			// Convert to screen coordinates
+			turretSx, turretSy := r.camera.WorldToScreen(entity.X+mountX, entity.Y+mountY)
+			
+			// Draw turret as a circle and a line (barrel)
+			turretRadius := 4.0 * r.camera.Zoom
+			if turretRadius < 1.5 {
+				turretRadius = 1.5
+			}
+			
+			// Turret color (slightly lighter than ship)
+			var turretColor color.RGBA
+			if rgba, ok := clr.(color.RGBA); ok {
+				turretColor = color.RGBA{
+					uint8(math.Min(255, float64(rgba.R)+50)),
+					uint8(math.Min(255, float64(rgba.G)+50)),
+					uint8(math.Min(255, float64(rgba.B)+50)),
+					255,
+				}
+			} else {
+				turretColor = color.RGBA{200, 200, 200, 255} // Default gray
+			}
+			
+			// Draw turret circle (base)
+			vector.DrawFilledCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), turretColor, true)
+			
+			// Draw turret outline circle for better visibility
+			vector.StrokeCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), 1.5, turretColor, true)
+			
+			// Draw turret barrel (line showing direction)
+			// For player, use turret rotation; for others, use ship rotation + mount angle
+			var turretRotation float64
+			if entity.Type == EntityTypePlayer {
+				if playerInput, ok := entity.Input.(*PlayerInput); ok {
+					turretRotation = playerInput.TurretRotation
+				} else {
+					turretRotation = entity.Rotation + mount.Angle
+				}
+			} else {
+				turretRotation = entity.Rotation + mount.Angle
+			}
+			
+			// Barrel extends from center of turret circle
+			barrelLength := turretRadius * 3.0
+			barrelStartX := turretSx + math.Cos(turretRotation)*turretRadius
+			barrelStartY := turretSy + math.Sin(turretRotation)*turretRadius
+			barrelEndX := turretSx + math.Cos(turretRotation)*barrelLength
+			barrelEndY := turretSy + math.Sin(turretRotation)*barrelLength
+			
+			// Draw barrel line (thicker for visibility)
+			vector.StrokeLine(screen, float32(barrelStartX), float32(barrelStartY),
+				float32(barrelEndX), float32(barrelEndY), 2.5, turretColor, true)
+		}
+	}
+
 	// Draw health bar for damaged entities
 	if entity.Health < entity.MaxHealth {
 		barWidth := radius * 2
