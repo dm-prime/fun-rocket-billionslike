@@ -28,13 +28,18 @@ type TurretMountPoint struct {
 type ShipTypeConfig struct {
 	Type          ShipType
 	Name          string
-	Speed         float64
+	Speed         float64 // Max speed (pixels per second)
+	Acceleration  float64 // Thrust acceleration (pixels per second squared)
 	Health        float64
 	Radius        float64
 	ShootCooldown float64 // Only used for ships that can shoot
 	Color         color.RGBA
 	Shape         ShipShape
 	TurretMounts  []TurretMountPoint // Turret mount points on this ship
+	// Physics properties
+	AngularAcceleration float64 // Angular acceleration (radians per second squared)
+	MaxAngularSpeed     float64 // Max angular velocity (radians per second)
+	Friction            float64 // Velocity damping factor (0-1, higher = less friction)
 }
 
 // ShipShape defines the visual shape of a ship
@@ -52,14 +57,18 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 	switch shipType {
 	case ShipTypePlayer:
 		return ShipTypeConfig{
-			Type:          ShipTypePlayer,
-			Name:          "Player",
-			Speed:         200.0,
-			Health:        100.0,
-			Radius:        10.0,                       // Smaller collision radius
-			ShootCooldown: 0.1,                        // Very fast shooting
-			Color:         color.RGBA{0, 255, 0, 255}, // Green
-			Shape:         ShipShapeTriangle,
+			Type:                ShipTypePlayer,
+			Name:                "Player",
+			Speed:               200.0,                      // Max speed
+			Acceleration:        400.0,                      // Thrust acceleration
+			Health:              100.0,
+			Radius:              10.0,                       // Smaller collision radius
+			ShootCooldown:       0.1,                        // Very fast shooting
+			Color:               color.RGBA{0, 255, 0, 255}, // Green
+			Shape:               ShipShapeTriangle,
+			AngularAcceleration: 5.0,                        // Radians per second squared
+			MaxAngularSpeed:     3.0,                        // Radians per second
+			Friction:            0.98,                       // Slight friction
 			TurretMounts: []TurretMountPoint{
 				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0}, // Front mount (active)
 				{OffsetX: 0.0, OffsetY: 5.0, Angle: 0.0, Active: false, BarrelLength: 12.0}, // Rear mount (inactive)
@@ -67,27 +76,35 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 		}
 	case ShipTypeHomingSuicide:
 		return ShipTypeConfig{
-			Type:          ShipTypeHomingSuicide,
-			Name:          "Homing Suicide",
-			Speed:         200.0,
-			Health:        30.0,
-			Radius:        10.0,
-			ShootCooldown: 0.0,                          // Doesn't shoot
-			Color:         color.RGBA{255, 100, 0, 255}, // Orange
-			Shape:         ShipShapeTriangle,
-			TurretMounts:  []TurretMountPoint{}, // No turrets
+			Type:                ShipTypeHomingSuicide,
+			Name:                "Homing Suicide",
+			Speed:               200.0,                      // Max speed
+			Acceleration:        350.0,                      // Thrust acceleration
+			Health:              30.0,
+			Radius:              10.0,
+			ShootCooldown:       0.0,                        // Doesn't shoot
+			Color:               color.RGBA{255, 100, 0, 255}, // Orange
+			Shape:               ShipShapeTriangle,
+			AngularAcceleration: 4.0,                        // Radians per second squared
+			MaxAngularSpeed:     2.5,                        // Radians per second
+			Friction:            0.97,                       // Moderate friction
+			TurretMounts:        []TurretMountPoint{},      // No turrets
 		}
 	case ShipTypeShooter:
 		return ShipTypeConfig{
-			Type:          ShipTypeShooter,
-			Name:          "Shooter",
-			Speed:         120.0,
-			Health:        50.0,
-			Radius:        12.0,
-			ShootCooldown: 1.0 + rand.Float64()*1.5,   // 1-2.5 seconds
-			Color:         color.RGBA{255, 0, 0, 255}, // Red
-			Shape:         ShipShapeTriangle,
-			TurretMounts:  []TurretMountPoint{}, // No turrets (shoots from center)
+			Type:                ShipTypeShooter,
+			Name:                "Shooter",
+			Speed:               120.0,                      // Max speed
+			Acceleration:        250.0,                      // Thrust acceleration
+			Health:              50.0,
+			Radius:              12.0,
+			ShootCooldown:       1.0 + rand.Float64()*1.5,  // 1-2.5 seconds
+			Color:               color.RGBA{255, 0, 0, 255}, // Red
+			Shape:               ShipShapeTriangle,
+			AngularAcceleration: 3.0,                        // Radians per second squared
+			MaxAngularSpeed:     2.0,                        // Radians per second
+			Friction:            0.96,                       // More friction
+			TurretMounts:        []TurretMountPoint{},      // No turrets (shoots from center)
 		}
 	default:
 		return GetShipTypeConfig(ShipTypePlayer)

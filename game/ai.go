@@ -23,18 +23,22 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 	// Update AI input state
 	aiInput.Update(deltaTime)
 
+	// Calculate target position based on behavior
+	targetX := entity.X
+	targetY := entity.Y
+
 	// Behavior depends on enemy type
 	switch aiInput.EnemyType {
 	case EnemyTypeHomingSuicide:
 		// Direct homing: always chase player directly
 		if player != nil && player.Active {
-			aiInput.TargetX = player.X
-			aiInput.TargetY = player.Y
+			targetX = player.X
+			targetY = player.Y
 		} else {
 			// No player, wander
 			aiInput.PatternTime += deltaTime
-			aiInput.TargetX = entity.X + math.Cos(aiInput.PatternTime)*50
-			aiInput.TargetY = entity.Y + math.Sin(aiInput.PatternTime)*50
+			targetX = entity.X + math.Cos(aiInput.PatternTime)*50
+			targetY = entity.Y + math.Sin(aiInput.PatternTime)*50
 		}
 
 	case EnemyTypeShooter:
@@ -49,20 +53,67 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 				optimalDistance := 300.0
 				if distance < optimalDistance {
 					// Back away slightly
-					aiInput.TargetX = entity.X - dx/distance*50
-					aiInput.TargetY = entity.Y - dy/distance*50
+					targetX = entity.X - dx/distance*50
+					targetY = entity.Y - dy/distance*50
 				} else {
 					// Move closer
-					aiInput.TargetX = player.X
-					aiInput.TargetY = player.Y
+					targetX = player.X
+					targetY = player.Y
 				}
 			}
 		} else {
 			// No player, wander
 			aiInput.PatternTime += deltaTime
-			aiInput.TargetX = entity.X + math.Cos(aiInput.PatternTime)*50
-			aiInput.TargetY = entity.Y + math.Sin(aiInput.PatternTime)*50
+			targetX = entity.X + math.Cos(aiInput.PatternTime)*50
+			targetY = entity.Y + math.Sin(aiInput.PatternTime)*50
 		}
+	}
+
+	// Update target position
+	aiInput.TargetX = targetX
+	aiInput.TargetY = targetY
+
+	// Calculate desired rotation to face target
+	dx := targetX - entity.X
+	dy := targetY - entity.Y
+	distance := math.Sqrt(dx*dx + dy*dy)
+
+	if distance > 1.0 {
+		// Calculate angle to target
+		// Rotation 0 points right (east), matching rendering convention
+		// Atan2(dy, dx) gives angle from positive x-axis
+		targetAngle := math.Atan2(dy, dx)
+
+		// Calculate angle difference (normalize to -PI to PI)
+		angleDiff := targetAngle - entity.Rotation
+		// Normalize angle difference to [-PI, PI]
+		for angleDiff > math.Pi {
+			angleDiff -= 2 * math.Pi
+		}
+		for angleDiff < -math.Pi {
+			angleDiff += 2 * math.Pi
+		}
+
+		// Convert angle difference to rotation input (-1 to 1)
+		// Use a dead zone to prevent jittering
+		deadZone := 0.1 // radians (~5.7 degrees)
+		if math.Abs(angleDiff) > deadZone {
+			// Normalize to -1 to 1 range
+			maxAngle := math.Pi
+			rotationInput := angleDiff / maxAngle
+			// Clamp to [-1, 1]
+			if rotationInput > 1.0 {
+				rotationInput = 1.0
+			} else if rotationInput < -1.0 {
+				rotationInput = -1.0
+			}
+			aiInput.DesiredRotation = rotationInput
+		} else {
+			aiInput.DesiredRotation = 0.0
+		}
+	} else {
+		// Too close, stop rotating
+		aiInput.DesiredRotation = 0.0
 	}
 }
 

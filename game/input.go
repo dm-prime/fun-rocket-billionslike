@@ -1,16 +1,14 @@
 package game
 
 import (
-	"math"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // InputProvider defines the interface for entity input/behavior
 type InputProvider interface {
-	// GetMovement returns the desired movement vector (x, y) given the entity's current position
-	GetMovement(entityX, entityY float64) (float64, float64)
+	// GetThrust returns the thrust amount (-1 to 1, where 1 is forward, -1 is backward)
+	GetThrust() float64
 
 	// GetRotation returns the desired rotation change (-1 to 1, where 1 is clockwise)
 	GetRotation() float64
@@ -45,40 +43,30 @@ func NewPlayerInput() *PlayerInput {
 	}
 }
 
-// GetMovement returns movement based on arrow keys or WASD
-func (p *PlayerInput) GetMovement(entityX, entityY float64) (float64, float64) {
-	var moveX, moveY float64
-	speed := 200.0 // pixels per second
-
-	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
-		moveX -= speed
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
-		moveX += speed
-	}
+// GetThrust returns forward/backward thrust based on W/S or Up/Down keys
+// Returns -1 to 1, where 1 is forward thrust, -1 is backward thrust
+func (p *PlayerInput) GetThrust() float64 {
+	thrust := 0.0
 	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
-		moveY -= speed
+		thrust += 1.0 // Forward
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-		moveY += speed
+		thrust -= 1.0 // Backward
 	}
-
-	return moveX, moveY
+	return thrust
 }
 
-// GetRotation returns manual rotation from Q/E keys
-// Ship rotation is not affected by auto-targeting, only turret rotates
+// GetRotation returns manual rotation from A/D or Left/Right keys
 // Returns -1 to 1, where 1 is clockwise rotation
 func (p *PlayerInput) GetRotation() float64 {
-	// Manual rotation only (Q/E keys)
-	rotationSpeed := 1.0
-	if ebiten.IsKeyPressed(ebiten.KeyQ) {
-		return -rotationSpeed
+	rotation := 0.0
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
+		rotation -= 1.0 // Counter-clockwise
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyE) {
-		return rotationSpeed
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
+		rotation += 1.0 // Clockwise
 	}
-	return 0
+	return rotation
 }
 
 // ShouldShoot returns true if there's a target (auto-shoot) or spacebar is pressed
@@ -122,6 +110,9 @@ type AIInput struct {
 
 	// Enemy type for behavior differentiation
 	EnemyType EnemyType
+
+	// Desired rotation (-1 to 1, where 1 is clockwise)
+	DesiredRotation float64
 }
 
 // AIState represents the current AI behavior state
@@ -136,9 +127,10 @@ const (
 // NewAIInput creates a new AI input provider
 func NewAIInput() *AIInput {
 	return &AIInput{
-		State:        AIStateMoving,
-		ShootCooldown: 1.0,
-		EnemyType:    EnemyTypeHomingSuicide, // Default
+		State:            AIStateMoving,
+		ShootCooldown:   1.0,
+		EnemyType:       EnemyTypeHomingSuicide, // Default
+		DesiredRotation: 0.0,
 	}
 }
 
@@ -147,39 +139,28 @@ func NewAIInputWithType(enemyType EnemyType) *AIInput {
 	shipType := GetShipTypeForEnemyType(enemyType)
 	shipConfig := GetShipTypeConfig(shipType)
 	ai := &AIInput{
-		State:        AIStateMoving,
-		ShootCooldown: shipConfig.ShootCooldown,
-		EnemyType:    enemyType,
+		State:            AIStateMoving,
+		ShootCooldown:   shipConfig.ShootCooldown,
+		EnemyType:       enemyType,
+		DesiredRotation: 0.0,
 	}
 	return ai
 }
 
-// GetMovement returns movement towards target
-// Note: Speed should be handled by the entity's ship type, but we keep this for compatibility
-func (a *AIInput) GetMovement(entityX, entityY float64) (float64, float64) {
-	shipType := GetShipTypeForEnemyType(a.EnemyType)
-	shipConfig := GetShipTypeConfig(shipType)
-	speed := shipConfig.Speed
-
-	// Calculate direction to target
-	dx := a.TargetX - entityX
-	dy := a.TargetY - entityY
-
-	// Normalize direction
-	dist := dx*dx + dy*dy
-	if dist > 0 {
-		dist = math.Sqrt(dist)
-		dx = dx / dist * speed
-		dy = dy / dist * speed
-	}
-
-	return dx, dy
+// GetThrust returns forward thrust towards target
+// Returns -1 to 1, where 1 is forward thrust, -1 is backward thrust
+func (a *AIInput) GetThrust() float64 {
+	// AI always tries to move forward (thrust = 1.0)
+	// Turning will handle direction changes
+	return 1.0
 }
 
-// GetRotation returns rotation towards movement direction
+// GetRotation returns rotation towards target direction
+// Returns -1 to 1, where 1 is clockwise rotation
+// This will be calculated based on the angle difference to target
 func (a *AIInput) GetRotation() float64 {
-	// AI doesn't actively rotate, movement handles direction
-	return 0
+	// This will be set by UpdateAI based on target direction
+	return a.DesiredRotation
 }
 
 // ShouldShoot returns true if AI should shoot

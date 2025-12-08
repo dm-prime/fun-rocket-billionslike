@@ -112,51 +112,63 @@ func (e *Entity) Update(deltaTime float64) {
 	// Update age
 	e.Age += deltaTime
 
-	if e.Input != nil {
-		// Get movement input
-		moveX, moveY := e.Input.GetMovement(e.X, e.Y)
-		
-		// Apply movement (normalize to max speed)
-		var maxSpeed float64
-		if e.Type == EntityTypeProjectile {
-			maxSpeed = 500.0
-		} else {
-			// Get speed from ship type
-			shipConfig := GetShipTypeConfig(e.ShipType)
-			maxSpeed = shipConfig.Speed
-		}
-		
-		speed := math.Sqrt(moveX*moveX + moveY*moveY)
-		if speed > 0 {
-			if speed > maxSpeed {
-				moveX = moveX / speed * maxSpeed
-				moveY = moveY / speed * maxSpeed
-			}
-			e.VX = moveX
-			e.VY = moveY
-		}
+	if e.Input != nil && e.Type != EntityTypeProjectile {
+		// Get ship config for physics properties
+		shipConfig := GetShipTypeConfig(e.ShipType)
 
-		// Get rotation input
-		rotation := e.Input.GetRotation()
-		if rotation != 0 {
-			e.AngularVelocity = rotation * 3.0 // radians per second
+		// Handle rotation (angular velocity)
+		rotationInput := e.Input.GetRotation()
+		if math.Abs(rotationInput) > 0.01 {
+			// Apply angular acceleration
+			e.AngularVelocity += rotationInput * shipConfig.AngularAcceleration * deltaTime
+			
+			// Clamp to max angular speed
+			if e.AngularVelocity > shipConfig.MaxAngularSpeed {
+				e.AngularVelocity = shipConfig.MaxAngularSpeed
+			} else if e.AngularVelocity < -shipConfig.MaxAngularSpeed {
+				e.AngularVelocity = -shipConfig.MaxAngularSpeed
+			}
 		} else {
-			e.AngularVelocity *= 0.9 // friction
+			// Apply angular friction
+			e.AngularVelocity *= 0.9
 		}
 
 		// Update rotation
 		e.Rotation += e.AngularVelocity * deltaTime
+
+		// Handle thrust (forward/backward acceleration)
+		thrustInput := e.Input.GetThrust()
+		if math.Abs(thrustInput) > 0.01 {
+			// Calculate forward direction vector
+			// Rotation 0 points right (east), matching the rendering convention
+			forwardX := math.Cos(e.Rotation)
+			forwardY := math.Sin(e.Rotation)
+
+			// Apply acceleration in forward/backward direction
+			acceleration := thrustInput * shipConfig.Acceleration * deltaTime
+			e.VX += forwardX * acceleration
+			e.VY += forwardY * acceleration
+		}
+
+		// Apply friction to velocity
+		e.VX *= shipConfig.Friction
+		e.VY *= shipConfig.Friction
+
+		// Clamp velocity to max speed
+		currentSpeed := math.Sqrt(e.VX*e.VX + e.VY*e.VY)
+		if currentSpeed > shipConfig.Speed {
+			scale := shipConfig.Speed / currentSpeed
+			e.VX *= scale
+			e.VY *= scale
+		}
+	} else if e.Type == EntityTypeProjectile {
+		// Projectiles maintain their velocity without physics
+		// (they're already set when created)
 	}
 
-	// Apply velocity
+	// Apply velocity to position
 	e.X += e.VX * deltaTime
 	e.Y += e.VY * deltaTime
-
-	// Apply friction (but not for projectiles)
-	if e.Type != EntityTypeProjectile {
-		e.VX *= 0.95
-		e.VY *= 0.95
-	}
 }
 
 // DistanceTo calculates the distance to another entity
