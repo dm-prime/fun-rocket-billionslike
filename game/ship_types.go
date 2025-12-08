@@ -71,8 +71,10 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Friction:            0.98,             // Slight friction
 			DefaultWeaponType:   WeaponTypeBullet, // Fallback weapon type
 			TurretMounts: []TurretMountPoint{
-				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeBullet},        // Front mount (active) - bullets
-				{OffsetX: 6.0, OffsetY: -6.0, Angle: 0.0, Active: true, BarrelLength: 10.0, WeaponType: WeaponTypeHomingMissile}, // Right mount (active) - rockets
+				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeBullet},        // Right mount (active) - bullets
+				{OffsetX: 16.0, OffsetY: 0.0, Angle: 0.0, Active: true, BarrelLength: 10.0, WeaponType: WeaponTypeHomingMissile}, // Front mount (active) - rockets
+				{OffsetX: 0.0, OffsetY: 8.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeBullet},         // Left mount (active) - bullets
+
 			},
 		}
 	case ShipTypeHomingSuicide:

@@ -215,8 +215,7 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			}
 
 			// Turret color (slightly lighter than ship)
-			var turretColor color.RGBA
-			turretColor = color.RGBA{
+			turretColor := color.RGBA{
 				uint8(math.Min(255, float64(clr.R)+50)),
 				uint8(math.Min(255, float64(clr.G)+50)),
 				uint8(math.Min(255, float64(clr.B)+50)),
@@ -353,10 +352,10 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 		targetSx, targetSy := r.camera.WorldToScreen(targetX, targetY)
 
 		// Draw aim line (dashed or solid line)
-		// Use a semi-transparent color
-		aimColor := color.RGBA{255, 255, 0, 128} // Yellow, semi-transparent
+		// Use a transparent color
+		aimColor := color.RGBA{255, 255, 0, 64} // Yellow, transparent
 		if entity.Type == EntityTypeEnemy {
-			aimColor = color.RGBA{255, 100, 100, 128} // Light red for enemies
+			aimColor = color.RGBA{255, 100, 100, 64} // Light red for enemies, transparent
 		}
 
 		// Draw line from aim point to target
