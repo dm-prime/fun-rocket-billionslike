@@ -58,9 +58,10 @@ func GetEnemyTypeConfig(enemyType EnemyType) EnemyTypeConfig {
 
 // GetRandomEnemyType returns a random enemy type (weighted towards homing suicide)
 func GetRandomEnemyType() EnemyType {
-	if rand.Float64() < 0.5 {
+	r := rand.Float64()
+	if r < 0.5 {
 		return EnemyTypeRocket
-	} else if rand.Float64() < 0.8 {
+	} else if r < 0.8 {
 		return EnemyTypeShooter
 	} else {
 		return EnemyTypeShooterTwin

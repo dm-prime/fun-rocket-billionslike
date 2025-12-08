@@ -134,31 +134,20 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 	}
 
 	// Determine color based on ship type
-	var clr color.Color
+	var factionConfig = GetFactionConfig(entity.Faction)
+	var clr = factionConfig.Color
 	if entity.Type == EntityTypeProjectile {
 		// Color bullets by owner's ship type
 		if entity.Owner != nil {
-			ownerConfig := GetShipTypeConfig(entity.Owner.ShipType)
-			clr = ownerConfig.Color
+			clr = factionConfig.Color
 		} else {
 			clr = color.RGBA{255, 255, 0, 255} // Yellow fallback if no owner
 		}
 	} else {
-		// For homing rockets, use faction-based colors
 		if entity.ShipType == ShipTypeHomingSuicide {
-			entityFaction := GetEntityFaction(entity)
-			switch entityFaction {
-			case FactionPlayer:
-				clr = color.RGBA{0, 255, 0, 255} // Green for player faction
-			case FactionEnemy:
-				clr = color.RGBA{255, 0, 0, 255} // Red for enemy faction
-			default:
-				clr = color.RGBA{255, 100, 0, 255} // Orange fallback
-			}
+			clr = factionConfig.Color
 		} else {
-			// Use ship type for color
-			shipConfig := GetShipTypeConfig(entity.ShipType)
-			clr = shipConfig.Color
+			clr = factionConfig.Color
 		}
 	}
 
@@ -227,15 +216,11 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 
 			// Turret color (slightly lighter than ship)
 			var turretColor color.RGBA
-			if rgba, ok := clr.(color.RGBA); ok {
-				turretColor = color.RGBA{
-					uint8(math.Min(255, float64(rgba.R)+50)),
-					uint8(math.Min(255, float64(rgba.G)+50)),
-					uint8(math.Min(255, float64(rgba.B)+50)),
-					255,
-				}
-			} else {
-				turretColor = color.RGBA{200, 200, 200, 255} // Default gray
+			turretColor = color.RGBA{
+				uint8(math.Min(255, float64(clr.R)+50)),
+				uint8(math.Min(255, float64(clr.G)+50)),
+				uint8(math.Min(255, float64(clr.B)+50)),
+				255,
 			}
 
 			// Draw turret circle (base)
@@ -308,7 +293,7 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 	if entity.Type == EntityTypePlayer {
 		// Player targets enemies
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			if playerInput.HasTarget {
+			if playerInput.HasTarget() {
 				targetX = playerInput.TargetX
 				targetY = playerInput.TargetY
 				hasTarget = true

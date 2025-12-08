@@ -1,7 +1,6 @@
 package game
 
 import (
-	"image/color"
 	"math/rand"
 )
 
@@ -34,7 +33,6 @@ type ShipTypeConfig struct {
 	Health        float64
 	Radius        float64
 	ShootCooldown float64 // Only used for ships that can shoot
-	Color         color.RGBA
 	Shape         ShipShape
 	TurretMounts  []TurretMountPoint // Turret mount points on this ship
 	// Physics properties
@@ -65,9 +63,8 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Speed:               200.0, // Max speed
 			Acceleration:        400.0, // Thrust acceleration
 			Health:              100.0,
-			Radius:              10.0,                       // Smaller collision radius
-			ShootCooldown:       0.1,                        // Very fast shooting
-			Color:               color.RGBA{0, 255, 0, 255}, // Green
+			Radius:              10.0, // Smaller collision radius
+			ShootCooldown:       0.1,  // Very fast shooting
 			Shape:               ShipShapeTriangle,
 			AngularAcceleration: 5.0,              // Radians per second squared
 			MaxAngularSpeed:     3.0,              // Radians per second
@@ -86,13 +83,12 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Acceleration:        350.0, // Thrust acceleration
 			Health:              1.0,
 			Radius:              6.0,
-			ShootCooldown:       0.0,                          // Doesn't shoot
-			Color:               color.RGBA{255, 100, 0, 255}, // Orange
+			ShootCooldown:       0.0, // Doesn't shoot
 			Shape:               ShipShapeTriangle,
 			AngularAcceleration: 4.0,                  // Radians per second squared
 			MaxAngularSpeed:     2.5,                  // Radians per second
 			Friction:            0.97,                 // Moderate friction
-			DefaultWeaponType:   WeaponTypeBullet,     // Not used (doesn't shoot)
+			DefaultWeaponType:   WeaponTypeNone,       // Not used (doesn't shoot)
 			TurretMounts:        []TurretMountPoint{}, // No turrets
 		}
 	case ShipTypeShooter:
@@ -103,14 +99,15 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Acceleration:        250.0, // Thrust acceleration
 			Health:              50.0,
 			Radius:              12.0,
-			ShootCooldown:       1.0 + rand.Float64()*1.5,   // 1-2.5 seconds
-			Color:               color.RGBA{255, 0, 0, 255}, // Red
+			ShootCooldown:       1.0 + rand.Float64()*1.5, // 1-2.5 seconds
 			Shape:               ShipShapeTriangle,
 			AngularAcceleration: 3.0,                     // Radians per second squared
 			MaxAngularSpeed:     2.0,                     // Radians per second
 			Friction:            0.96,                    // More friction
 			DefaultWeaponType:   WeaponTypeHomingMissile, // Spawns homing enemies
-			TurretMounts:        []TurretMountPoint{},    // No turrets (shoots from center)
+			TurretMounts: []TurretMountPoint{
+				{OffsetX: 0.0, OffsetY: 0.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeHomingMissile},
+			}, // No turrets (shoots from center)
 		}
 	default:
 		return GetShipTypeConfig(ShipTypePlayer)

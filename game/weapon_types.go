@@ -6,6 +6,7 @@ type WeaponType int
 const (
 	WeaponTypeBullet WeaponType = iota
 	WeaponTypeHomingMissile
+	WeaponTypeNone
 )
 
 // WeaponConfig holds configuration for each weapon type
@@ -42,4 +43,14 @@ func GetWeaponConfig(weaponType WeaponType) WeaponConfig {
 	default:
 		return GetWeaponConfig(WeaponTypeBullet)
 	}
+}
+
+// CanShoot checks if a weapon is ready to fire based on time since last shot
+// Returns true if the weapon hasn't been fired yet or if enough time has passed
+func (wc WeaponConfig) CanShoot(timeSinceLastShot float64, hasBeenFired bool) bool {
+	// If weapon hasn't been fired yet, it can fire immediately
+	if !hasBeenFired {
+		return true
+	}
+	return timeSinceLastShot >= wc.Cooldown
 }

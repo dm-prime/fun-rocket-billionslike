@@ -16,6 +16,9 @@ type InputProvider interface {
 	// ShouldShoot returns true if the entity should shoot
 	ShouldShoot() bool
 
+	// HasTarget returns true if the entity has a valid target
+	HasTarget() bool
+
 	// Update updates the input provider state
 	Update(deltaTime float64)
 }
@@ -26,7 +29,7 @@ type PlayerInput struct {
 
 	// Target acquisition AI
 	TargetX, TargetY float64
-	HasTarget        bool
+	hasTarget        bool
 	MaxTargetRange   float64 // Maximum range to acquire targets
 
 	// Turret rotation (for active turret)
@@ -41,7 +44,7 @@ func NewPlayerInput() *PlayerInput {
 	return &PlayerInput{
 		keys:            make([]ebiten.Key, 0, 10),
 		MaxTargetRange:  1000.0, // 1000 pixels max range
-		HasTarget:       false,
+		hasTarget:       false,
 		TurretRotation:  0.0,
 		WeaponCooldowns: make(map[WeaponType]float64),
 	}
@@ -77,33 +80,16 @@ func (p *PlayerInput) GetRotation() float64 {
 // Note: Actual firing is controlled by weapon cooldowns in spawnProjectile
 func (p *PlayerInput) ShouldShoot() bool {
 	// Auto-shoot when there's a target
-	if p.HasTarget {
+	if p.HasTarget() {
 		return true
 	}
 	// Fallback to manual shooting
 	return ebiten.IsKeyPressed(ebiten.KeySpace)
 }
 
-// UpdateWeaponCooldown updates cooldown for a specific weapon type
-func (p *PlayerInput) UpdateWeaponCooldown(weaponType WeaponType, deltaTime float64) {
-	if p.WeaponCooldowns == nil {
-		p.WeaponCooldowns = make(map[WeaponType]float64)
-	}
-	p.WeaponCooldowns[weaponType] += deltaTime
-}
-
-// CanShootWeapon checks if a weapon type is ready to fire
-func (p *PlayerInput) CanShootWeapon(weaponType WeaponType) bool {
-	if p.WeaponCooldowns == nil {
-		return true
-	}
-	// If weapon hasn't been fired yet, it can fire immediately
-	timeSinceLastShot, hasBeenFired := p.WeaponCooldowns[weaponType]
-	if !hasBeenFired {
-		return true
-	}
-	weaponConfig := GetWeaponConfig(weaponType)
-	return timeSinceLastShot >= weaponConfig.Cooldown
+// HasTarget returns true if the player has a valid target
+func (p *PlayerInput) HasTarget() bool {
+	return p.hasTarget
 }
 
 // ResetWeaponCooldown resets cooldown for a specific weapon type
@@ -143,9 +129,6 @@ type AIInput struct {
 	// Time since last shot
 	TimeSinceLastShot float64
 
-	// Shoot cooldown in seconds
-	ShootCooldown float64
-
 	// Movement pattern parameters
 	PatternX, PatternY float64
 	PatternTime        float64
@@ -155,6 +138,12 @@ type AIInput struct {
 
 	// Desired rotation (-1 to 1, where 1 is clockwise)
 	DesiredRotation float64
+
+	// Whether a valid target is currently acquired
+	hasTarget bool
+
+	// Weapon cooldowns (tracked per weapon type)
+	WeaponCooldowns map[WeaponType]float64 // Time since last shot per weapon type
 }
 
 // AIState represents the current AI behavior state
@@ -170,21 +159,19 @@ const (
 func NewAIInput() *AIInput {
 	return &AIInput{
 		State:           AIStateMoving,
-		ShootCooldown:   1.0,
 		EnemyType:       EnemyTypeRocket, // Default
 		DesiredRotation: 0.0,
+		WeaponCooldowns: make(map[WeaponType]float64),
 	}
 }
 
 // NewAIInputWithType creates a new AI input provider with a specific enemy type
 func NewAIInputWithType(enemyType EnemyType) *AIInput {
-	shipType := GetShipTypeForEnemyType(enemyType)
-	shipConfig := GetShipTypeConfig(shipType)
 	ai := &AIInput{
 		State:           AIStateMoving,
-		ShootCooldown:   shipConfig.ShootCooldown,
 		EnemyType:       enemyType,
 		DesiredRotation: 0.0,
+		WeaponCooldowns: make(map[WeaponType]float64),
 	}
 	return ai
 }
@@ -207,18 +194,32 @@ func (a *AIInput) GetRotation() float64 {
 
 // ShouldShoot returns true if AI should shoot
 func (a *AIInput) ShouldShoot() bool {
-	// Only shooter type enemies shoot
-	if a.EnemyType != EnemyTypeShooter {
-		return false
+	// Auto-shoot when there's a target
+	return a.HasTarget()
+}
+
+// HasTarget returns true if the AI has a valid target
+func (a *AIInput) HasTarget() bool {
+	return a.hasTarget
+}
+
+// ResetWeaponCooldown resets cooldown for a specific weapon type
+func (a *AIInput) ResetWeaponCooldown(weaponType WeaponType) {
+	if a.WeaponCooldowns == nil {
+		a.WeaponCooldowns = make(map[WeaponType]float64)
 	}
-	if a.TimeSinceLastShot >= a.ShootCooldown {
-		return true
-	}
-	return false
+	a.WeaponCooldowns[weaponType] = 0.0
 }
 
 // Update updates the AI state
 func (a *AIInput) Update(deltaTime float64) {
 	a.TimeSinceLastShot += deltaTime
 	a.PatternTime += deltaTime
+
+	// Update weapon cooldowns
+	if a.WeaponCooldowns != nil {
+		for weaponType := range a.WeaponCooldowns {
+			a.WeaponCooldowns[weaponType] += deltaTime
+		}
+	}
 }

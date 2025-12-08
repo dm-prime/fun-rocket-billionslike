@@ -49,6 +49,9 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*E
 		}
 	}
 
+	// Update hasTarget flag
+	aiInput.hasTarget = targetEntity != nil && targetEntity.Active
+
 	// Calculate target position based on behavior
 	targetX := entity.X
 	targetY := entity.Y

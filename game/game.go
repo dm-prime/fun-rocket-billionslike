@@ -187,7 +187,7 @@ func (g *Game) isPlayerRegistered() bool {
 // updatePlayerTargeting finds the nearest enemy and updates turret rotation to face it
 func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64) {
 	if g.player == nil || !g.player.Active {
-		playerInput.HasTarget = false
+		playerInput.hasTarget = false
 		return
 	}
 
@@ -230,7 +230,7 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 			// Store predicted target position
 			playerInput.TargetX = predictedX
 			playerInput.TargetY = predictedY
-			playerInput.HasTarget = true
+			playerInput.hasTarget = true
 
 			// Calculate angle from turret to predicted target
 			turretDx := predictedX - aimX
@@ -249,10 +249,10 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 			// No turret, just store target position
 			playerInput.TargetX = nearestEnemy.X
 			playerInput.TargetY = nearestEnemy.Y
-			playerInput.HasTarget = true
+			playerInput.hasTarget = true
 		}
 	} else {
-		playerInput.HasTarget = false
+		playerInput.hasTarget = false
 	}
 }
 
@@ -291,10 +291,10 @@ func (g *Game) spawnEnemy() {
 
 	// Choose random enemy type
 	enemyType := GetRandomEnemyType()
-	shipType := GetEnemyTypeConfig(enemyType).ShipType
 
 	aiInput := CreateEnemyAIWithType(enemyType)
-	enemy := NewEntityWithShipType(x, y, EntityTypeEnemy, shipType, aiInput)
+	enemy := NewEntityWithShipType(x, y, EntityTypeEnemy, GetEnemyTypeConfig(enemyType).ShipType, aiInput)
+	enemy.Faction = FactionEnemy // Explicitly set faction to enemy (regardless of ship type)
 	g.world.RegisterEntity(enemy)
 }
 
@@ -303,24 +303,39 @@ func (g *Game) spawnEnemy() {
 func (g *Game) spawnProjectile(entity *Entity) {
 	shipConfig := GetShipTypeConfig(entity.ShipType)
 
+	// Don't shoot if there are no turret mounts
+	if len(shipConfig.TurretMounts) == 0 {
+		return
+	}
+
 	// Calculate ship rotation transforms once
 	cosRot := math.Cos(entity.Rotation)
 	sinRot := math.Sin(entity.Rotation)
 
 	// Fire from all active turrets (checking weapon cooldowns)
-	hasActiveTurret := false
 	for i := range shipConfig.TurretMounts {
 		mount := &shipConfig.TurretMounts[i]
 		if !mount.Active {
 			continue
 		}
-		hasActiveTurret = true
 
-		// Check weapon cooldown for player
+		// Check weapon cooldown
+		weaponConfig := GetWeaponConfig(mount.WeaponType)
+		var timeSinceLastShot float64
+		var hasBeenFired bool
+
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			if !playerInput.CanShootWeapon(mount.WeaponType) {
-				continue // Skip this turret if weapon is on cooldown
+			if playerInput.WeaponCooldowns != nil {
+				timeSinceLastShot, hasBeenFired = playerInput.WeaponCooldowns[mount.WeaponType]
 			}
+		} else if aiInput, ok := entity.Input.(*AIInput); ok {
+			if aiInput.WeaponCooldowns != nil {
+				timeSinceLastShot, hasBeenFired = aiInput.WeaponCooldowns[mount.WeaponType]
+			}
+		}
+
+		if !weaponConfig.CanShoot(timeSinceLastShot, hasBeenFired) {
+			continue // Skip this turret if weapon is on cooldown
 		}
 
 		// Transform mount offset from ship-local to world coordinates
@@ -337,6 +352,10 @@ func (g *Game) spawnProjectile(entity *Entity) {
 			shootRotation = playerInput.TurretRotation
 			// Reset weapon cooldown after firing
 			playerInput.ResetWeaponCooldown(mount.WeaponType)
+		} else if aiInput, ok := entity.Input.(*AIInput); ok {
+			shootRotation = entity.Rotation + mount.Angle
+			// Reset weapon cooldown after firing
+			aiInput.ResetWeaponCooldown(mount.WeaponType)
 		} else {
 			shootRotation = entity.Rotation + mount.Angle
 		}
@@ -347,25 +366,6 @@ func (g *Game) spawnProjectile(entity *Entity) {
 
 		// Spawn weapon projectile based on turret's weapon type
 		g.spawnWeaponProjectile(mount.WeaponType, spawnX, spawnY, shootRotation, entity)
-	}
-
-	// If no active turrets, use default weapon type and shoot from center
-	if !hasActiveTurret {
-		weaponType := shipConfig.DefaultWeaponType
-
-		// Check weapon cooldown for player
-		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			if !playerInput.CanShootWeapon(weaponType) {
-				return // Can't shoot, weapon on cooldown
-			}
-			playerInput.ResetWeaponCooldown(weaponType)
-		}
-
-		spawnOffset := entity.Radius + 8.0
-		spawnX := entity.X + math.Cos(entity.Rotation)*spawnOffset
-		spawnY := entity.Y + math.Sin(entity.Rotation)*spawnOffset
-		shootRotation := entity.Rotation
-		g.spawnWeaponProjectile(weaponType, spawnX, spawnY, shootRotation, entity)
 	}
 }
 
@@ -441,7 +441,7 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 
 	// Spawn homing entity with same faction as owner
 	homingEnemyType := EnemyTypeRocket
-	homingShipType := GetShipTypeForEnemyType(homingEnemyType)
+	homingShipType := GetEnemyTypeConfig(homingEnemyType).ShipType
 
 	homingAI := CreateEnemyAIWithType(homingEnemyType)
 	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
