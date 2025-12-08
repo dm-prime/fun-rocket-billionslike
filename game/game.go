@@ -83,12 +83,18 @@ func (g *Game) createPlayer() {
 
 // respawnPlayer resets the entire game state
 func (g *Game) respawnPlayer() {
-	// Clear all enemies
+	// Collect entities to remove (avoid modifying slice while iterating)
+	enemiesToRemove := make([]*Entity, 0)
 	for _, entity := range g.world.AllEntities {
 		if entity.Type == EntityTypeEnemy {
-			entity.Active = false
-			g.world.UnregisterEntity(entity)
+			enemiesToRemove = append(enemiesToRemove, entity)
 		}
+	}
+
+	// Remove enemies
+	for _, entity := range enemiesToRemove {
+		entity.Active = false
+		g.world.UnregisterEntity(entity)
 	}
 
 	// Clear all projectiles
@@ -100,6 +106,11 @@ func (g *Game) respawnPlayer() {
 
 	// Reset player
 	if g.player != nil {
+		// Ensure player input is still set (reinitialize if needed)
+		if g.player.Input == nil {
+			g.player.Input = NewPlayerInput()
+		}
+
 		// Reset player position to center
 		g.player.X = g.config.WorldWidth / 2
 		g.player.Y = g.config.WorldHeight / 2
@@ -115,11 +126,19 @@ func (g *Game) respawnPlayer() {
 		// Restore health
 		g.player.Health = g.player.MaxHealth
 
+		// Reset age
+		g.player.Age = 0.0
+
 		// Ensure player is active
 		g.player.Active = true
 
-		// Update cell membership
-		g.world.UpdateEntityCell(g.player)
+		// Ensure player is registered in world
+		if !g.isPlayerRegistered() {
+			g.world.RegisterEntity(g.player)
+		} else {
+			// Update cell membership
+			g.world.UpdateEntityCell(g.player)
+		}
 
 		// Center camera on player
 		g.camera.X = g.player.X
@@ -133,6 +152,19 @@ func (g *Game) respawnPlayer() {
 	for i := 0; i < 10; i++ {
 		g.spawnEnemy()
 	}
+}
+
+// isPlayerRegistered checks if the player is registered in the world
+func (g *Game) isPlayerRegistered() bool {
+	if g.player == nil {
+		return false
+	}
+	for _, entity := range g.world.AllEntities {
+		if entity == g.player {
+			return true
+		}
+	}
+	return false
 }
 
 // spawnEnemy spawns a new enemy at a random position near the player
