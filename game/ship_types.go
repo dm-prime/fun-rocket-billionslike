@@ -17,10 +17,11 @@ const (
 
 // TurretMountPoint defines a turret mount position on a ship
 type TurretMountPoint struct {
-	OffsetX float64 // X offset from ship center (relative to ship forward direction)
-	OffsetY float64 // Y offset from ship center (relative to ship forward direction)
-	Angle   float64 // Angle offset from ship forward direction (in radians)
-	Active  bool    // Whether this mount point has an active turret
+	OffsetX      float64 // X offset from ship center (relative to ship forward direction)
+	OffsetY      float64 // Y offset from ship center (relative to ship forward direction)
+	Angle        float64 // Angle offset from ship forward direction (in radians)
+	Active       bool    // Whether this mount point has an active turret
+	BarrelLength float64 // Length of the barrel (where bullets spawn)
 }
 
 // ShipTypeConfig holds configuration for each ship type
@@ -60,8 +61,8 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Color:         color.RGBA{0, 255, 0, 255}, // Green
 			Shape:         ShipShapeTriangle,
 			TurretMounts: []TurretMountPoint{
-				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true}, // Front mount (active)
-				{OffsetX: 0.0, OffsetY: 5.0, Angle: 0.0, Active: false}, // Rear mount (inactive)
+				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0}, // Front mount (active)
+				{OffsetX: 0.0, OffsetY: 5.0, Angle: 0.0, Active: false, BarrelLength: 12.0}, // Rear mount (inactive)
 			},
 		}
 	case ShipTypeHomingSuicide:

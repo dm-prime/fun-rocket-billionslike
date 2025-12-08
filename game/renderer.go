@@ -136,7 +136,13 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 	// Determine color based on ship type
 	var clr color.Color
 	if entity.Type == EntityTypeProjectile {
-		clr = color.RGBA{255, 255, 0, 255} // Yellow
+		// Color bullets by owner's ship type
+		if entity.Owner != nil {
+			ownerConfig := GetShipTypeConfig(entity.Owner.ShipType)
+			clr = ownerConfig.Color
+		} else {
+			clr = color.RGBA{255, 255, 0, 255} // Yellow fallback if no owner
+		}
 	} else {
 		// Use ship type for color
 		shipConfig := GetShipTypeConfig(entity.ShipType)
@@ -239,7 +245,11 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 			}
 			
 			// Barrel extends from center of turret circle
-			barrelLength := turretRadius * 3.0
+			// Use barrel length from mount point, or default to 3x turret radius if not set
+			barrelLength := mount.BarrelLength * r.camera.Zoom
+			if barrelLength == 0 {
+				barrelLength = turretRadius * 3.0
+			}
 			barrelStartX := turretSx + math.Cos(turretRotation)*turretRadius
 			barrelStartY := turretSy + math.Sin(turretRotation)*turretRadius
 			barrelEndX := turretSx + math.Cos(turretRotation)*barrelLength

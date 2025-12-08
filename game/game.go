@@ -326,16 +326,20 @@ func (g *Game) spawnProjectile(entity *Entity) {
 			mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
 			mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
 			
-			// Spawn position is at turret mount point
-			spawnX = entity.X + mountX
-			spawnY = entity.Y + mountY
-			
 			// Use turret rotation for shooting direction
 			if playerInput, ok := entity.Input.(*PlayerInput); ok {
 				shootRotation = playerInput.TurretRotation
 			} else {
 				shootRotation = entity.Rotation + activeMount.Angle
 			}
+			
+			// Calculate turret mount position in world coordinates
+			turretX := entity.X + mountX
+			turretY := entity.Y + mountY
+			
+			// Spawn position is at the end of the barrel (turret position + barrel length in turret direction)
+			spawnX = turretX + math.Cos(shootRotation)*activeMount.BarrelLength
+			spawnY = turretY + math.Sin(shootRotation)*activeMount.BarrelLength
 		} else {
 			// Fallback to center shooting
 			spawnOffset := entity.Radius + 8.0
