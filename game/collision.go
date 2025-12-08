@@ -14,8 +14,9 @@ func NewCollisionSystem(world *World) *CollisionSystem {
 
 // CheckCollisions checks for collisions between entities in the world
 func (c *CollisionSystem) CheckCollisions() {
-	// Track which pairs we've already checked to avoid duplicate checks
-	checkedPairs := make(map[*Entity]map[*Entity]bool)
+	// Track checked pairs using a simple approach: mark entities as processed
+	// Since we iterate through AllEntities in order, we can use indices
+	processed := make(map[*Entity]bool, len(c.world.AllEntities))
 
 	// Iterate through all entities
 	for _, entity := range c.world.AllEntities {
@@ -29,23 +30,16 @@ func (c *CollisionSystem) CheckCollisions() {
 		// Check collisions with entities in these cells
 		for _, cell := range cells {
 			for _, other := range cell.GetActiveEntities() {
+				// Skip self, inactive, or dead entities
 				if other == entity || !other.Active || other.Health <= 0 {
 					continue
 				}
 
-				// Skip if we've already checked this pair
-				if checkedPairs[entity] != nil && checkedPairs[entity][other] {
+				// Only check pairs where the other entity hasn't been processed yet
+				// This ensures each pair is checked exactly once
+				if processed[other] {
 					continue
 				}
-				if checkedPairs[other] != nil && checkedPairs[other][entity] {
-					continue
-				}
-
-				// Initialize checked pairs map if needed
-				if checkedPairs[entity] == nil {
-					checkedPairs[entity] = make(map[*Entity]bool)
-				}
-				checkedPairs[entity][other] = true
 
 				// Skip collision if both entities have NoCollision flag (they pass through each other)
 				if entity.NoCollision && other.NoCollision {
@@ -66,6 +60,9 @@ func (c *CollisionSystem) CheckCollisions() {
 				}
 			}
 		}
+		
+		// Mark this entity as processed
+		processed[entity] = true
 	}
 }
 

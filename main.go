@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 
 	"billionslike3/game"
 
@@ -9,6 +11,12 @@ import (
 )
 
 func main() {
+	// Start pprof HTTP server in a goroutine for profiling
+	go func() {
+		log.Println("Starting pprof server on http://localhost:6060")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	config := game.DefaultConfig()
 	g := game.NewGame(config)
 

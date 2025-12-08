@@ -139,7 +139,7 @@ func (e *Entity) Update(deltaTime float64) {
 			}
 		} else {
 			// Apply angular friction
-			e.AngularVelocity *= 0.9
+			e.AngularVelocity *= 0.9999
 		}
 
 		// Update rotation

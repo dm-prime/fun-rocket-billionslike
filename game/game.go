@@ -219,6 +219,10 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 	// Track which enemies are already targeted by other turrets
 	targetedEnemies := make(map[*Entity]bool)
 
+	// Use spatial partitioning to find nearby enemies instead of iterating all entities
+	maxTargetRange := playerInput.MaxTargetRange
+	candidates := g.world.GetEntitiesInRadius(g.player.X, g.player.Y, maxTargetRange*1.5) // Slightly larger radius to account for turret offsets
+
 	// Process each turret separately
 	for turretIndex, mount := range shipConfig.TurretMounts {
 		if !mount.Active {
@@ -233,10 +237,10 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 
 		// Find nearest enemy from this turret's position that isn't already targeted
 		var nearestEnemy *Entity
-		nearestDistance := playerInput.MaxTargetRange
+		nearestDistanceSq := maxTargetRange * maxTargetRange // Use squared distance to avoid sqrt
 
-		// Search through all entities to find nearest enemy of opposite faction
-		for _, entity := range g.world.AllEntities {
+		// Search through nearby entities instead of all entities
+		for _, entity := range candidates {
 			if !entity.Active || entity.Health <= 0 {
 				continue
 			}
@@ -252,13 +256,13 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 				continue
 			}
 
-			// Calculate distance from turret position to enemy
+			// Calculate squared distance from turret position to enemy (avoid sqrt)
 			dx := entity.X - turretX
 			dy := entity.Y - turretY
-			distance := math.Sqrt(dx*dx + dy*dy)
+			distanceSq := dx*dx + dy*dy
 
-			if distance < nearestDistance {
-				nearestDistance = distance
+			if distanceSq < nearestDistanceSq {
+				nearestDistanceSq = distanceSq
 				nearestEnemy = entity
 			}
 		}
@@ -560,7 +564,7 @@ func (g *Game) Update() error {
 			// Update AI if it's an enemy
 			if entity.Type == EntityTypeEnemy {
 				if aiInput, ok := entity.Input.(*AIInput); ok {
-					UpdateAI(aiInput, entity, g.player, g.world.AllEntities, deltaTime)
+					UpdateAI(aiInput, entity, g.player, g.world, deltaTime)
 				}
 			}
 		}

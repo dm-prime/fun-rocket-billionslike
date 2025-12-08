@@ -140,11 +140,15 @@ func (w *World) GetCellsForEntity(entity *Entity) []*Cell {
 			cellMaxY := cellMinY + w.Config.CellSize
 
 			// Check if entity circle overlaps with cell rectangle
+			// Use squared distance to avoid sqrt
 			closestX := math.Max(cellMinX, math.Min(entity.X, cellMaxX))
 			closestY := math.Max(cellMinY, math.Min(entity.Y, cellMaxY))
-			distance := math.Sqrt((entity.X-closestX)*(entity.X-closestX) + (entity.Y-closestY)*(entity.Y-closestY))
+			dx := entity.X - closestX
+			dy := entity.Y - closestY
+			distanceSq := dx*dx + dy*dy
+			radiusSq := entity.Radius * entity.Radius
 
-			if distance <= entity.Radius {
+			if distanceSq <= radiusSq {
 				cell := w.GetCell(cellX, cellY)
 				if cell != nil {
 					cells = append(cells, cell)
@@ -174,8 +178,9 @@ func (w *World) GetEntitiesInRadius(x, y, radius float64) []*Entity {
 			for _, entity := range cell.GetActiveEntities() {
 				dx := entity.X - x
 				dy := entity.Y - y
-				distance := math.Sqrt(dx*dx + dy*dy)
-				if distance <= radius {
+				distanceSq := dx*dx + dy*dy
+				radiusSq := radius * radius
+				if distanceSq <= radiusSq {
 					entities = append(entities, entity)
 				}
 			}

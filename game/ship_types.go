@@ -71,7 +71,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Shape:               ShipShapeTriangle,
 			AngularAcceleration: 5.0,              // Radians per second squared
 			MaxAngularSpeed:     3.0,              // Radians per second
-			Friction:            0.98,             // Slight friction
+			Friction:            0.9999,           // Very very small friction
 			DefaultWeaponType:   WeaponTypeBullet, // Fallback weapon type
 			Score:               50,               // Player doesn't give score
 			TurretMounts: []TurretMountPoint{
@@ -93,7 +93,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Shape:               ShipShapeTriangle,
 			AngularAcceleration: 4.0,                  // Radians per second squared
 			MaxAngularSpeed:     2.5,                  // Radians per second
-			Friction:            0.97,                 // Moderate friction
+			Friction:            0.9999,               // Very very small friction
 			DefaultWeaponType:   WeaponTypeNone,       // Not used (doesn't shoot)
 			Score:               10,                   // Small score for easy enemies
 			TurretMounts:        []TurretMountPoint{}, // No turrets
@@ -110,7 +110,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			Shape:               ShipShapeTriangle,
 			AngularAcceleration: 3.0,                     // Radians per second squared
 			MaxAngularSpeed:     2.0,                     // Radians per second
-			Friction:            0.96,                    // More friction
+			Friction:            0.9999,                  // Very very small friction
 			DefaultWeaponType:   WeaponTypeHomingMissile, // Spawns homing enemies
 			Score:               25,                      // Higher score for tougher enemies
 			TurretMounts: []TurretMountPoint{

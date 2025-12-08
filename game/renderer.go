@@ -117,13 +117,22 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
+	// Count visible entities to optimize rendering
+	visibleEntityCount := 0
+	for _, cell := range visibleCells {
+		visibleEntityCount += cell.Count
+	}
+	
+	// Skip expensive aim line rendering if there are too many entities
+	drawAimLines := visibleEntityCount < 50
+
 	// Render entities in visible cells
 	for _, cell := range visibleCells {
 		for _, entity := range cell.GetActiveEntities() {
 			if entity.Health <= 0 {
 				continue
 			}
-			r.RenderEntity(screen, entity, player)
+			r.renderEntityWithAim(screen, entity, player, drawAimLines)
 		}
 	}
 
@@ -133,6 +142,11 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 
 // RenderEntity renders a single entity
 func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *Entity) {
+	r.renderEntityWithAim(screen, entity, player, true)
+}
+
+// renderEntityWithAim renders a single entity, with optional aim line rendering
+func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, player *Entity, drawAimLines bool) {
 	// Convert world coordinates to screen coordinates
 	sx, sy := r.camera.WorldToScreen(entity.X, entity.Y)
 
@@ -167,7 +181,7 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 		radius = 1
 	}
 
-	// Get ship config for shape
+	// Get ship config for shape (cache it since we use it multiple times)
 	var shipConfig ShipTypeConfig
 	if entity.Type != EntityTypeProjectile {
 		shipConfig = GetShipTypeConfig(entity.ShipType)
@@ -198,8 +212,8 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 	}
 
 	// Draw turret mount points (only for ships, not projectiles)
+	// Reuse shipConfig we already fetched above
 	if entity.Type != EntityTypeProjectile {
-		shipConfig := GetShipTypeConfig(entity.ShipType)
 		for turretIndex, mount := range shipConfig.TurretMounts {
 			// Only draw active turrets
 			if !mount.Active {
@@ -273,7 +287,8 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 	}
 
 	// Draw aim target indicator for ships with turrets or shooting capability
-	if entity.Type != EntityTypeProjectile {
+	// Skip aim lines if there are too many entities to avoid performance issues
+	if entity.Type != EntityTypeProjectile && drawAimLines {
 		r.drawAimTarget(screen, entity, player)
 	}
 

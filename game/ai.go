@@ -15,7 +15,7 @@ const (
 )
 
 // UpdateAI updates AI input providers with behavior patterns
-func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*Entity, deltaTime float64) {
+func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, deltaTime float64) {
 	if aiInput == nil {
 		return
 	}
@@ -27,11 +27,15 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*E
 	entityFaction := GetEntityFaction(entity)
 	targetFaction := GetOppositeFaction(entityFaction)
 
-	// Find nearest target of opposite faction
+	// Find nearest target of opposite faction using spatial partitioning
 	var targetEntity *Entity
-	nearestDistance := math.MaxFloat64
+	nearestDistanceSq := math.MaxFloat64
 	
-	for _, candidate := range allEntities {
+	// Use spatial query to find nearby entities instead of iterating all entities
+	searchRadius := 1000.0 // Reasonable search radius
+	candidates := world.GetEntitiesInRadius(entity.X, entity.Y, searchRadius)
+	
+	for _, candidate := range candidates {
 		if !candidate.Active || candidate == entity || candidate.Health <= 0 {
 			continue
 		}
@@ -40,11 +44,24 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*E
 		if candidateFaction == targetFaction {
 			dx := candidate.X - entity.X
 			dy := candidate.Y - entity.Y
-			distance := math.Sqrt(dx*dx + dy*dy)
+			distanceSq := dx*dx + dy*dy // Use squared distance to avoid sqrt
 			
-			if distance < nearestDistance {
-				nearestDistance = distance
+			if distanceSq < nearestDistanceSq {
+				nearestDistanceSq = distanceSq
 				targetEntity = candidate
+			}
+		}
+	}
+	
+	// If no target found in search radius, check player specifically (might be outside radius)
+	if targetEntity == nil && player != nil && player.Active {
+		playerFaction := GetEntityFaction(player)
+		if playerFaction == targetFaction {
+			dx := player.X - entity.X
+			dy := player.Y - entity.Y
+			distanceSq := dx*dx + dy*dy
+			if distanceSq < nearestDistanceSq {
+				targetEntity = player
 			}
 		}
 	}
@@ -75,7 +92,8 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*E
 		if targetEntity != nil && targetEntity.Active {
 			dx := targetEntity.X - entity.X
 			dy := targetEntity.Y - entity.Y
-			distance := math.Sqrt(dx*dx + dy*dy)
+			distanceSq := dx*dx + dy*dy
+			distance := math.Sqrt(distanceSq)
 
 			if distance > 0 {
 				// Try to maintain optimal shooting distance (200-400 pixels)
