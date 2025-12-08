@@ -7,15 +7,15 @@ type EnemyType int
 
 const (
 	EnemyTypeHomingSuicide EnemyType = iota // Chases player and explodes on contact
-	EnemyTypeShooter                       // Shoots projectiles at player
+	EnemyTypeShooter                        // Shoots projectiles at player
 )
 
 // EnemyTypeConfig holds configuration for each enemy type
 type EnemyTypeConfig struct {
-	Type         EnemyType
-	Speed        float64
-	Health       float64
-	Radius       float64
+	Type          EnemyType
+	Speed         float64
+	Health        float64
+	Radius        float64
 	ShootCooldown float64 // Only used for shooter type
 }
 
@@ -50,4 +50,3 @@ func GetRandomEnemyType() EnemyType {
 	}
 	return EnemyTypeShooter
 }
-

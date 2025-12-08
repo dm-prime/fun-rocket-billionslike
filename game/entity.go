@@ -33,6 +33,9 @@ type Entity struct {
 	// Entity type identifier
 	Type EntityType
 
+	// Ship type (determines stats and graphics)
+	ShipType ShipType
+
 	// Current cell coordinates (for fast lookup)
 	CellX, CellY int
 
@@ -54,17 +57,47 @@ const (
 
 // NewEntity creates a new entity with the given parameters
 func NewEntity(x, y, radius float64, entityType EntityType, input InputProvider) *Entity {
+	// Set default ship type based on entity type
+	var shipType ShipType
+	switch entityType {
+	case EntityTypePlayer:
+		shipType = ShipTypePlayer
+	case EntityTypeEnemy:
+		shipType = ShipTypeHomingSuicide // Default enemy ship type
+	default:
+		shipType = ShipTypePlayer // Default for projectiles (not really used)
+	}
+	
 	return &Entity{
 		X:         x,
 		Y:         y,
 		Radius:    radius,
 		Type:      entityType,
+		ShipType:  shipType,
 		Input:     input,
 		MaxHealth: 100.0,
 		Health:    100.0,
 		Active:    true,
 		Age:       0.0,
 	}
+}
+
+// NewEntityWithShipType creates a new entity with ship type (sets stats from ship type)
+func NewEntityWithShipType(x, y float64, entityType EntityType, shipType ShipType, input InputProvider) *Entity {
+	shipConfig := GetShipTypeConfig(shipType)
+	entity := &Entity{
+		X:         x,
+		Y:         y,
+		Radius:    shipConfig.Radius,
+		Type:      entityType,
+		ShipType:  shipType,
+		Input:     input,
+		MaxHealth: shipConfig.Health,
+		Health:    shipConfig.Health,
+		Active:    true,
+		Age:       0.0,
+	}
+	return entity
 }
 
 // Update updates the entity based on input and applies movement
@@ -81,9 +114,13 @@ func (e *Entity) Update(deltaTime float64) {
 		moveX, moveY := e.Input.GetMovement(e.X, e.Y)
 		
 		// Apply movement (normalize to max speed)
-		maxSpeed := 200.0 // pixels per second
+		var maxSpeed float64
 		if e.Type == EntityTypeProjectile {
 			maxSpeed = 500.0
+		} else {
+			// Get speed from ship type
+			shipConfig := GetShipTypeConfig(e.ShipType)
+			maxSpeed = shipConfig.Speed
 		}
 		
 		speed := math.Sqrt(moveX*moveX + moveY*moveY)

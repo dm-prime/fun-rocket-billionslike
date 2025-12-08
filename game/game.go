@@ -65,15 +65,13 @@ func NewGame(config Config) *Game {
 // createPlayer creates the player entity
 func (g *Game) createPlayer() {
 	playerInput := NewPlayerInput()
-	g.player = NewEntity(
+	g.player = NewEntityWithShipType(
 		g.config.WorldWidth/2,
 		g.config.WorldHeight/2,
-		15.0, // radius
 		EntityTypePlayer,
+		ShipTypePlayer,
 		playerInput,
 	)
-	g.player.MaxHealth = 100.0
-	g.player.Health = 100.0
 	g.world.RegisterEntity(g.player)
 
 	// Center camera on player
@@ -167,6 +165,73 @@ func (g *Game) isPlayerRegistered() bool {
 	return false
 }
 
+// updatePlayerTargeting finds the nearest enemy and updates player rotation to face it
+func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64) {
+	if g.player == nil || !g.player.Active {
+		playerInput.HasTarget = false
+		playerInput.desiredRotation = 0
+		return
+	}
+
+	// Find nearest enemy
+	var nearestEnemy *Entity
+	nearestDistance := playerInput.MaxTargetRange
+
+	// Search through all entities to find nearest enemy
+	for _, entity := range g.world.AllEntities {
+		if !entity.Active || entity.Type != EntityTypeEnemy || entity.Health <= 0 {
+			continue
+		}
+
+		dx := entity.X - g.player.X
+		dy := entity.Y - g.player.Y
+		distance := math.Sqrt(dx*dx + dy*dy)
+
+		if distance < nearestDistance {
+			nearestDistance = distance
+			nearestEnemy = entity
+		}
+	}
+
+	// Update target and calculate desired rotation
+	if nearestEnemy != nil {
+		playerInput.TargetX = nearestEnemy.X
+		playerInput.TargetY = nearestEnemy.Y
+		playerInput.HasTarget = true
+
+		// Calculate desired rotation towards target
+		dx := nearestEnemy.X - g.player.X
+		dy := nearestEnemy.Y - g.player.Y
+		targetRotation := math.Atan2(dy, dx)
+
+		// Calculate angle difference
+		currentRotation := g.player.Rotation
+		angleDiff := targetRotation - currentRotation
+		
+		// Normalize angle difference to [-π, π]
+		for angleDiff > math.Pi {
+			angleDiff -= 2 * math.Pi
+		}
+		for angleDiff < -math.Pi {
+			angleDiff += 2 * math.Pi
+		}
+
+		// Convert angle difference to rotation input (-1 to 1)
+		// Use a threshold to avoid jitter when already facing target
+		threshold := 0.05 // ~3 degrees
+		if math.Abs(angleDiff) < threshold {
+			playerInput.desiredRotation = 0
+		} else if angleDiff > 0 {
+			playerInput.desiredRotation = 1.0 // Rotate clockwise
+		} else {
+			playerInput.desiredRotation = -1.0 // Rotate counter-clockwise
+		}
+	} else {
+		playerInput.HasTarget = false
+		playerInput.desiredRotation = 0
+	}
+}
+
 // spawnEnemy spawns a new enemy at a random position near the player
 func (g *Game) spawnEnemy() {
 	var x, y float64
@@ -202,12 +267,10 @@ func (g *Game) spawnEnemy() {
 
 	// Choose random enemy type
 	enemyType := GetRandomEnemyType()
-	config := GetEnemyTypeConfig(enemyType)
+	shipType := GetShipTypeForEnemyType(enemyType)
 	
 	aiInput := CreateEnemyAIWithType(enemyType)
-	enemy := NewEntity(x, y, config.Radius, EntityTypeEnemy, aiInput)
-	enemy.MaxHealth = config.Health
-	enemy.Health = config.Health
+	enemy := NewEntityWithShipType(x, y, EntityTypeEnemy, shipType, aiInput)
 	g.world.RegisterEntity(enemy)
 }
 
@@ -282,6 +345,9 @@ func (g *Game) Update() error {
 			if playerInput.ShouldRespawn() {
 				g.respawnPlayer()
 			}
+			
+			// Update player target acquisition AI
+			g.updatePlayerTargeting(playerInput, deltaTime)
 		}
 	}
 

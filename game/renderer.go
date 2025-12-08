@@ -133,39 +133,43 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 		return
 	}
 
-	// Determine color based on entity type
+	// Determine color based on ship type
 	var clr color.Color
-	switch entity.Type {
-	case EntityTypePlayer:
-		clr = color.RGBA{0, 255, 0, 255} // Green
-	case EntityTypeEnemy:
-		// Different colors for different enemy types
-		if aiInput, ok := entity.Input.(*AIInput); ok {
-			switch aiInput.EnemyType {
-			case EnemyTypeHomingSuicide:
-				clr = color.RGBA{255, 100, 0, 255} // Orange (suicide)
-			case EnemyTypeShooter:
-				clr = color.RGBA{255, 0, 0, 255} // Red (shooter)
-			default:
-				clr = color.RGBA{255, 0, 0, 255} // Red (default)
-			}
-		} else {
-			clr = color.RGBA{255, 0, 0, 255} // Red (default)
-		}
-	case EntityTypeProjectile:
+	if entity.Type == EntityTypeProjectile {
 		clr = color.RGBA{255, 255, 0, 255} // Yellow
-	default:
-		clr = color.RGBA{255, 255, 255, 255} // White
+	} else {
+		// Use ship type for color
+		shipConfig := GetShipTypeConfig(entity.ShipType)
+		clr = shipConfig.Color
 	}
 
-	// Draw entity as a circle
+	// Draw entity based on ship shape
 	radius := entity.Radius * r.camera.Zoom
 	if radius < 1 {
 		radius = 1
 	}
 
-	// Draw filled circle
-	vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+	// Get ship config for shape
+	var shipConfig ShipTypeConfig
+	if entity.Type != EntityTypeProjectile {
+		shipConfig = GetShipTypeConfig(entity.ShipType)
+	} else {
+		shipConfig = ShipTypeConfig{Shape: ShipShapeCircle}
+	}
+
+	// Draw entity based on shape
+	switch shipConfig.Shape {
+	case ShipShapeCircle:
+		vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+	case ShipShapeTriangle:
+		r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr)
+	case ShipShapeSquare:
+		r.drawSquare(screen, sx, sy, radius, entity.Rotation, clr)
+	case ShipShapeDiamond:
+		r.drawDiamond(screen, sx, sy, radius, entity.Rotation, clr)
+	default:
+		vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+	}
 
 	// Draw direction indicator (small line)
 	if entity.Type != EntityTypeProjectile {
@@ -189,6 +193,112 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 		healthPercent := entity.Health / entity.MaxHealth
 		healthWidth := barWidth * healthPercent
 		vector.DrawFilledRect(screen, float32(barX), float32(barY), float32(healthWidth), float32(barHeight), color.RGBA{0, 255, 0, 255}, true)
+	}
+}
+
+// drawTriangle draws an oblong triangle shape rotated by the entity's rotation
+// The front point extends further to clearly show direction (arrowhead shape)
+func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color) {
+	// Oblong triangle: front point extends further, back points form a wider base
+	frontLength := radius * 1.5  // Front extends 1.5x the radius
+	backOffset := radius * 0.5    // How far back the base is
+	backWidth := radius * 0.9     // Half-width of the back base
+	
+	// Front point (extends forward)
+	frontX := x + math.Cos(rotation)*frontLength
+	frontY := y + math.Sin(rotation)*frontLength
+	
+	// Back left point (perpendicular to rotation direction, offset backward)
+	backLeftX := x + math.Cos(rotation+math.Pi)*backOffset + math.Cos(rotation+math.Pi/2)*backWidth
+	backLeftY := y + math.Sin(rotation+math.Pi)*backOffset + math.Sin(rotation+math.Pi/2)*backWidth
+	
+	// Back right point
+	backRightX := x + math.Cos(rotation+math.Pi)*backOffset + math.Cos(rotation-math.Pi/2)*backWidth
+	backRightY := y + math.Sin(rotation+math.Pi)*backOffset + math.Sin(rotation-math.Pi/2)*backWidth
+	
+	points := [3][2]float64{
+		{frontX, frontY},           // Front point (tip)
+		{backLeftX, backLeftY},     // Back left
+		{backRightX, backRightY},   // Back right
+	}
+	
+	// Draw triangle outline with thicker lines
+	for i := 0; i < 3; i++ {
+		next := (i + 1) % 3
+		vector.StrokeLine(screen, float32(points[i][0]), float32(points[i][1]), 
+			float32(points[next][0]), float32(points[next][1]), 2, clr, true)
+	}
+	
+	// Fill triangle by drawing lines from center to edges
+	centerX, centerY := x, y
+	for i := 0; i < 3; i++ {
+		vector.StrokeLine(screen, float32(centerX), float32(centerY),
+			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
+	}
+	
+	// Fill the back edge
+	vector.StrokeLine(screen, float32(backLeftX), float32(backLeftY),
+		float32(backRightX), float32(backRightY), 2, clr, true)
+}
+
+// drawSquare draws a square shape rotated by the entity's rotation
+func (r *Renderer) drawSquare(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color) {
+	// Square rotated by entity rotation
+	halfSize := radius * 0.707 // radius * sqrt(2)/2 for diagonal
+	points := [4][2]float64{
+		{x + math.Cos(rotation+0.785)*halfSize, y + math.Sin(rotation+0.785)*halfSize}, // Top-right (45 degrees)
+		{x + math.Cos(rotation+2.356)*halfSize, y + math.Sin(rotation+2.356)*halfSize}, // Bottom-right (135 degrees)
+		{x + math.Cos(rotation+3.927)*halfSize, y + math.Sin(rotation+3.927)*halfSize}, // Bottom-left (225 degrees)
+		{x + math.Cos(rotation+5.498)*halfSize, y + math.Sin(rotation+5.498)*halfSize}, // Top-left (315 degrees)
+	}
+	
+	// Draw filled square by drawing triangles
+	// Triangle 1: points 0, 1, 2
+	vector.StrokeLine(screen, float32(points[0][0]), float32(points[0][1]),
+		float32(points[1][0]), float32(points[1][1]), 2, clr, true)
+	vector.StrokeLine(screen, float32(points[1][0]), float32(points[1][1]),
+		float32(points[2][0]), float32(points[2][1]), 2, clr, true)
+	vector.StrokeLine(screen, float32(points[2][0]), float32(points[2][1]),
+		float32(points[0][0]), float32(points[0][1]), 2, clr, true)
+	
+	// Triangle 2: points 0, 2, 3
+	vector.StrokeLine(screen, float32(points[0][0]), float32(points[0][1]),
+		float32(points[2][0]), float32(points[2][1]), 2, clr, true)
+	vector.StrokeLine(screen, float32(points[2][0]), float32(points[2][1]),
+		float32(points[3][0]), float32(points[3][1]), 2, clr, true)
+	vector.StrokeLine(screen, float32(points[3][0]), float32(points[3][1]),
+		float32(points[0][0]), float32(points[0][1]), 2, clr, true)
+	
+	// Fill by drawing lines from center
+	centerX, centerY := x, y
+	for i := 0; i < 4; i++ {
+		vector.StrokeLine(screen, float32(centerX), float32(centerY),
+			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
+	}
+}
+
+// drawDiamond draws a diamond shape rotated by the entity's rotation
+func (r *Renderer) drawDiamond(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color) {
+	// Diamond (square rotated 45 degrees) pointing forward
+	points := [4][2]float64{
+		{x + math.Cos(rotation)*radius, y + math.Sin(rotation)*radius},           // Front point
+		{x + math.Cos(rotation+1.571)*radius, y + math.Sin(rotation+1.571)*radius}, // Right point (90 degrees)
+		{x + math.Cos(rotation+3.142)*radius, y + math.Sin(rotation+3.142)*radius}, // Back point (180 degrees)
+		{x + math.Cos(rotation+4.712)*radius, y + math.Sin(rotation+4.712)*radius}, // Left point (270 degrees)
+	}
+	
+	// Draw diamond outline
+	for i := 0; i < 4; i++ {
+		next := (i + 1) % 4
+		vector.StrokeLine(screen, float32(points[i][0]), float32(points[i][1]),
+			float32(points[next][0]), float32(points[next][1]), 2, clr, true)
+	}
+	
+	// Fill diamond (draw lines from center to each point)
+	centerX, centerY := x, y
+	for i := 0; i < 4; i++ {
+		vector.StrokeLine(screen, float32(centerX), float32(centerY),
+			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
 	}
 }
 

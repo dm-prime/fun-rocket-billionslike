@@ -25,12 +25,20 @@ type InputProvider interface {
 // PlayerInput provides input from keyboard/gamepad
 type PlayerInput struct {
 	keys []ebiten.Key
+	
+	// Target acquisition AI
+	TargetX, TargetY float64
+	HasTarget        bool
+	MaxTargetRange   float64 // Maximum range to acquire targets
+	desiredRotation  float64 // Desired rotation direction (-1 to 1) for auto-targeting
 }
 
 // NewPlayerInput creates a new player input provider
 func NewPlayerInput() *PlayerInput {
 	return &PlayerInput{
-		keys: make([]ebiten.Key, 0, 10),
+		keys:          make([]ebiten.Key, 0, 10),
+		MaxTargetRange: 1000.0, // 1000 pixels max range
+		HasTarget:     false,
 	}
 }
 
@@ -55,8 +63,17 @@ func (p *PlayerInput) GetMovement(entityX, entityY float64) (float64, float64) {
 	return moveX, moveY
 }
 
-// GetRotation returns rotation based on Q/E keys
+// GetRotation returns rotation towards target, or manual Q/E keys if no target
+// Returns -1 to 1, where 1 is clockwise rotation
 func (p *PlayerInput) GetRotation() float64 {
+	// If we have a target, rotate towards it automatically
+	if p.HasTarget {
+		// Return desired rotation direction (-1 to 1)
+		// This will be calculated in updatePlayerTargeting
+		return p.desiredRotation
+	}
+	
+	// Fallback to manual rotation if no target
 	rotationSpeed := 1.0
 	if ebiten.IsKeyPressed(ebiten.KeyQ) {
 		return -rotationSpeed
@@ -67,8 +84,13 @@ func (p *PlayerInput) GetRotation() float64 {
 	return 0
 }
 
-// ShouldShoot returns true if spacebar is pressed
+// ShouldShoot returns true if there's a target (auto-shoot) or spacebar is pressed
 func (p *PlayerInput) ShouldShoot() bool {
+	// Auto-shoot when there's a target
+	if p.HasTarget {
+		return true
+	}
+	// Fallback to manual shooting
 	return ebiten.IsKeyPressed(ebiten.KeySpace)
 }
 
@@ -125,19 +147,22 @@ func NewAIInput() *AIInput {
 
 // NewAIInputWithType creates a new AI input provider with a specific enemy type
 func NewAIInputWithType(enemyType EnemyType) *AIInput {
-	config := GetEnemyTypeConfig(enemyType)
+	shipType := GetShipTypeForEnemyType(enemyType)
+	shipConfig := GetShipTypeConfig(shipType)
 	ai := &AIInput{
 		State:        AIStateMoving,
-		ShootCooldown: config.ShootCooldown,
+		ShootCooldown: shipConfig.ShootCooldown,
 		EnemyType:    enemyType,
 	}
 	return ai
 }
 
 // GetMovement returns movement towards target
+// Note: Speed should be handled by the entity's ship type, but we keep this for compatibility
 func (a *AIInput) GetMovement(entityX, entityY float64) (float64, float64) {
-	config := GetEnemyTypeConfig(a.EnemyType)
-	speed := config.Speed
+	shipType := GetShipTypeForEnemyType(a.EnemyType)
+	shipConfig := GetShipTypeConfig(shipType)
+	speed := shipConfig.Speed
 
 	// Calculate direction to target
 	dx := a.TargetX - entityX
