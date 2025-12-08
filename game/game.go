@@ -81,36 +81,58 @@ func (g *Game) createPlayer() {
 	g.camera.Y = g.player.Y
 }
 
-// respawnPlayer respawns the player at the center of the world
+// respawnPlayer resets the entire game state
 func (g *Game) respawnPlayer() {
-	if g.player == nil {
-		return
+	// Clear all enemies
+	for _, entity := range g.world.AllEntities {
+		if entity.Type == EntityTypeEnemy {
+			entity.Active = false
+			g.world.UnregisterEntity(entity)
+		}
 	}
 
-	// Reset player position to center
-	g.player.X = g.config.WorldWidth / 2
-	g.player.Y = g.config.WorldHeight / 2
+	// Clear all projectiles
+	for _, projectile := range g.projectiles {
+		projectile.Active = false
+		g.world.UnregisterEntity(projectile)
+	}
+	g.projectiles = g.projectiles[:0] // Clear slice but keep capacity
 
-	// Reset velocity
-	g.player.VX = 0
-	g.player.VY = 0
-	g.player.AngularVelocity = 0
+	// Reset player
+	if g.player != nil {
+		// Reset player position to center
+		g.player.X = g.config.WorldWidth / 2
+		g.player.Y = g.config.WorldHeight / 2
 
-	// Reset rotation
-	g.player.Rotation = 0
+		// Reset velocity
+		g.player.VX = 0
+		g.player.VY = 0
+		g.player.AngularVelocity = 0
 
-	// Restore health
-	g.player.Health = g.player.MaxHealth
+		// Reset rotation
+		g.player.Rotation = 0
 
-	// Ensure player is active
-	g.player.Active = true
+		// Restore health
+		g.player.Health = g.player.MaxHealth
 
-	// Update cell membership
-	g.world.UpdateEntityCell(g.player)
+		// Ensure player is active
+		g.player.Active = true
 
-	// Center camera on player
-	g.camera.X = g.player.X
-	g.camera.Y = g.player.Y
+		// Update cell membership
+		g.world.UpdateEntityCell(g.player)
+
+		// Center camera on player
+		g.camera.X = g.player.X
+		g.camera.Y = g.player.Y
+	}
+
+	// Reset spawn timer
+	g.enemySpawnTimer = 0
+
+	// Spawn initial enemies
+	for i := 0; i < 10; i++ {
+		g.spawnEnemy()
+	}
 }
 
 // spawnEnemy spawns a new enemy at a random position near the player
@@ -146,10 +168,14 @@ func (g *Game) spawnEnemy() {
 		}
 	}
 
-	aiInput := CreateEnemyAI()
-	enemy := NewEntity(x, y, 12.0, EntityTypeEnemy, aiInput)
-	enemy.MaxHealth = 50.0
-	enemy.Health = 50.0
+	// Choose random enemy type
+	enemyType := GetRandomEnemyType()
+	config := GetEnemyTypeConfig(enemyType)
+	
+	aiInput := CreateEnemyAIWithType(enemyType)
+	enemy := NewEntity(x, y, config.Radius, EntityTypeEnemy, aiInput)
+	enemy.MaxHealth = config.Health
+	enemy.Health = config.Health
 	g.world.RegisterEntity(enemy)
 }
 

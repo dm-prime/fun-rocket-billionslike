@@ -2,7 +2,6 @@ package game
 
 import (
 	"math"
-	"math/rand"
 )
 
 // AIBehavior defines different AI behavior patterns
@@ -24,30 +23,58 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 	// Update AI input state
 	aiInput.Update(deltaTime)
 
-	// Simple chase behavior: move towards player
-	if player != nil && player.Active {
-		dx := player.X - entity.X
-		dy := player.Y - entity.Y
-		distance := math.Sqrt(dx*dx + dy*dy)
-
-		if distance > 0 {
-			// Normalize and set target
-			aiInput.TargetX = entity.X + dx/distance*100
-			aiInput.TargetY = entity.Y + dy/distance*100
+	// Behavior depends on enemy type
+	switch aiInput.EnemyType {
+	case EnemyTypeHomingSuicide:
+		// Direct homing: always chase player directly
+		if player != nil && player.Active {
+			aiInput.TargetX = player.X
+			aiInput.TargetY = player.Y
+		} else {
+			// No player, wander
+			aiInput.PatternTime += deltaTime
+			aiInput.TargetX = entity.X + math.Cos(aiInput.PatternTime)*50
+			aiInput.TargetY = entity.Y + math.Sin(aiInput.PatternTime)*50
 		}
-	} else {
-		// No player, use pattern movement
-		aiInput.PatternTime += deltaTime
-		aiInput.TargetX = entity.X + math.Cos(aiInput.PatternTime)*50
-		aiInput.TargetY = entity.Y + math.Sin(aiInput.PatternTime)*50
+
+	case EnemyTypeShooter:
+		// Shooter: chase but keep some distance, shoot
+		if player != nil && player.Active {
+			dx := player.X - entity.X
+			dy := player.Y - entity.Y
+			distance := math.Sqrt(dx*dx + dy*dy)
+
+			if distance > 0 {
+				// Try to maintain optimal shooting distance (200-400 pixels)
+				optimalDistance := 300.0
+				if distance < optimalDistance {
+					// Back away slightly
+					aiInput.TargetX = entity.X - dx/distance*50
+					aiInput.TargetY = entity.Y - dy/distance*50
+				} else {
+					// Move closer
+					aiInput.TargetX = player.X
+					aiInput.TargetY = player.Y
+				}
+			}
+		} else {
+			// No player, wander
+			aiInput.PatternTime += deltaTime
+			aiInput.TargetX = entity.X + math.Cos(aiInput.PatternTime)*50
+			aiInput.TargetY = entity.Y + math.Sin(aiInput.PatternTime)*50
+		}
 	}
 }
 
-// CreateEnemyAI creates an AI input with a random behavior pattern
+// CreateEnemyAI creates an AI input with a random enemy type
 func CreateEnemyAI() *AIInput {
-	ai := NewAIInput()
-	ai.ShootCooldown = 0.5 + rand.Float64()*1.5 // Random cooldown between 0.5-2 seconds
-	return ai
+	enemyType := GetRandomEnemyType()
+	return NewAIInputWithType(enemyType)
+}
+
+// CreateEnemyAIWithType creates an AI input with a specific enemy type
+func CreateEnemyAIWithType(enemyType EnemyType) *AIInput {
+	return NewAIInputWithType(enemyType)
 }
 
 // UpdateEnemyAI updates enemy AI with more sophisticated behaviors

@@ -100,6 +100,9 @@ type AIInput struct {
 	// Movement pattern parameters
 	PatternX, PatternY float64
 	PatternTime         float64
+
+	// Enemy type for behavior differentiation
+	EnemyType EnemyType
 }
 
 // AIState represents the current AI behavior state
@@ -116,12 +119,25 @@ func NewAIInput() *AIInput {
 	return &AIInput{
 		State:        AIStateMoving,
 		ShootCooldown: 1.0,
+		EnemyType:    EnemyTypeHomingSuicide, // Default
 	}
+}
+
+// NewAIInputWithType creates a new AI input provider with a specific enemy type
+func NewAIInputWithType(enemyType EnemyType) *AIInput {
+	config := GetEnemyTypeConfig(enemyType)
+	ai := &AIInput{
+		State:        AIStateMoving,
+		ShootCooldown: config.ShootCooldown,
+		EnemyType:    enemyType,
+	}
+	return ai
 }
 
 // GetMovement returns movement towards target
 func (a *AIInput) GetMovement(entityX, entityY float64) (float64, float64) {
-	speed := 150.0 // pixels per second
+	config := GetEnemyTypeConfig(a.EnemyType)
+	speed := config.Speed
 
 	// Calculate direction to target
 	dx := a.TargetX - entityX
@@ -146,6 +162,10 @@ func (a *AIInput) GetRotation() float64 {
 
 // ShouldShoot returns true if AI should shoot
 func (a *AIInput) ShouldShoot() bool {
+	// Only shooter type enemies shoot
+	if a.EnemyType != EnemyTypeShooter {
+		return false
+	}
 	if a.TimeSinceLastShot >= a.ShootCooldown {
 		return true
 	}

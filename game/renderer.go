@@ -139,7 +139,19 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity) {
 	case EntityTypePlayer:
 		clr = color.RGBA{0, 255, 0, 255} // Green
 	case EntityTypeEnemy:
-		clr = color.RGBA{255, 0, 0, 255} // Red
+		// Different colors for different enemy types
+		if aiInput, ok := entity.Input.(*AIInput); ok {
+			switch aiInput.EnemyType {
+			case EnemyTypeHomingSuicide:
+				clr = color.RGBA{255, 100, 0, 255} // Orange (suicide)
+			case EnemyTypeShooter:
+				clr = color.RGBA{255, 0, 0, 255} // Red (shooter)
+			default:
+				clr = color.RGBA{255, 0, 0, 255} // Red (default)
+			}
+		} else {
+			clr = color.RGBA{255, 0, 0, 255} // Red (default)
+		}
 	case EntityTypeProjectile:
 		clr = color.RGBA{255, 255, 0, 255} // Yellow
 	default:

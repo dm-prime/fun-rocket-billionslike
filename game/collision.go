@@ -68,13 +68,45 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		return
 	}
 
+	// Check if either entity is a homing suicide enemy colliding with player
+	if e1.Type == EntityTypeEnemy && e2.Type == EntityTypePlayer {
+		if aiInput, ok := e1.Input.(*AIInput); ok && aiInput.EnemyType == EnemyTypeHomingSuicide {
+			// Suicide enemy explodes on contact with player
+			e2.Health -= 50.0 // Damage player
+			e1.Active = false  // Destroy enemy
+			e1.Health = 0
+			return
+		}
+	}
+	if e1.Type == EntityTypePlayer && e2.Type == EntityTypeEnemy {
+		if aiInput, ok := e2.Input.(*AIInput); ok && aiInput.EnemyType == EnemyTypeHomingSuicide {
+			// Suicide enemy explodes on contact with player
+			e1.Health -= 50.0 // Damage player
+			e2.Active = false // Destroy enemy
+			e2.Health = 0
+			return
+		}
+	}
+
 	// Entity-to-entity collisions (push apart)
 	c.PushApart(e1, e2)
 
-	// Apply damage if entities are different types
+	// Apply damage if entities are different types (but not suicide enemies, handled above)
 	if e1.Type != e2.Type {
-		e1.Health -= 10.0
-		e2.Health -= 10.0
+		// Only apply collision damage if not a suicide enemy
+		isSuicide1 := false
+		isSuicide2 := false
+		if aiInput1, ok := e1.Input.(*AIInput); ok {
+			isSuicide1 = aiInput1.EnemyType == EnemyTypeHomingSuicide
+		}
+		if aiInput2, ok := e2.Input.(*AIInput); ok {
+			isSuicide2 = aiInput2.EnemyType == EnemyTypeHomingSuicide
+		}
+		
+		if !isSuicide1 && !isSuicide2 {
+			e1.Health -= 10.0
+			e2.Health -= 10.0
+		}
 	}
 }
 
