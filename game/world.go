@@ -34,11 +34,11 @@ func NewWorld(config Config) *World {
 	}
 
 	return &World{
-		Cells:        cells,
-		Config:       config,
-		AllEntities:  make([]*Entity, 0, 10000),
-		EntityPool:   make([]*Entity, 0, 1000),
-		PoolIndex:    0,
+		Cells:       cells,
+		Config:      config,
+		AllEntities: make([]*Entity, 0, 10000),
+		EntityPool:  make([]*Entity, 0, 1000),
+		PoolIndex:   0,
 	}
 }
 
@@ -199,4 +199,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-

@@ -21,10 +21,10 @@ type Config struct {
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		CellSize:    256.0,
-		WorldWidth:  10000.0,
-		WorldHeight: 10000.0,
-		ScreenWidth: 1024,
+		CellSize:     256.0,
+		WorldWidth:   10000.0,
+		WorldHeight:  10000.0,
+		ScreenWidth:  1024,
 		ScreenHeight: 768,
 	}
 }
@@ -38,4 +38,3 @@ func (c Config) CellCountX() int {
 func (c Config) CellCountY() int {
 	return int(c.WorldHeight / c.CellSize)
 }
-

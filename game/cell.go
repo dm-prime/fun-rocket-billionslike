@@ -71,4 +71,3 @@ func (c *Cell) GetActiveEntities() []*Entity {
 	}
 	return active
 }
-

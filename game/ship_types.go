@@ -116,27 +116,3 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 		return GetShipTypeConfig(ShipTypePlayer)
 	}
 }
-
-// GetShipTypeForEnemyType returns the ship type for a given enemy type
-func GetShipTypeForEnemyType(enemyType EnemyType) ShipType {
-	switch enemyType {
-	case EnemyTypeHomingSuicide:
-		return ShipTypeHomingSuicide
-	case EnemyTypeShooter:
-		return ShipTypeShooter
-	default:
-		return ShipTypeHomingSuicide
-	}
-}
-
-// GetEnemyTypeForShipType returns the enemy type for a given ship type
-func GetEnemyTypeForShipType(shipType ShipType) EnemyType {
-	switch shipType {
-	case ShipTypeHomingSuicide:
-		return EnemyTypeHomingSuicide
-	case ShipTypeShooter:
-		return EnemyTypeShooter
-	default:
-		return EnemyTypeHomingSuicide
-	}
-}

@@ -55,7 +55,7 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*E
 
 	// Behavior depends on enemy type
 	switch aiInput.EnemyType {
-	case EnemyTypeHomingSuicide:
+	case EnemyTypeRocket:
 		// Direct homing: chase target of opposite faction
 		if targetEntity != nil && targetEntity.Active {
 			targetX = targetEntity.X

@@ -3,8 +3,9 @@ package main
 import (
 	"log"
 
-	"github.com/hajimehoshi/ebiten/v2"
 	"billionslike3/game"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func main() {
@@ -19,4 +20,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-

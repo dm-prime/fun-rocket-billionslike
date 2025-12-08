@@ -76,7 +76,7 @@ func NewEntity(x, y, radius float64, entityType EntityType, input InputProvider)
 	default:
 		shipType = ShipTypePlayer // Default for projectiles (not really used)
 	}
-	
+
 	return &Entity{
 		X:         x,
 		Y:         y,
@@ -130,7 +130,7 @@ func (e *Entity) Update(deltaTime float64) {
 		if math.Abs(rotationInput) > 0.01 {
 			// Apply angular acceleration
 			e.AngularVelocity += rotationInput * shipConfig.AngularAcceleration * deltaTime
-			
+
 			// Clamp to max angular speed
 			if e.AngularVelocity > shipConfig.MaxAngularSpeed {
 				e.AngularVelocity = shipConfig.MaxAngularSpeed
@@ -209,4 +209,3 @@ func (e *Entity) Reset() {
 	e.Faction = FactionEnemy // Reset to default
 	e.NoCollision = false
 }
-

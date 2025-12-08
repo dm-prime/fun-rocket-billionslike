@@ -21,12 +21,19 @@ type Game struct {
 	player *Entity
 
 	// Projectile pool
-	projectiles []*Entity
+	projectiles    []*Entity
 	maxProjectiles int
 
 	// Enemy spawn timer
 	enemySpawnTimer float64
 	enemySpawnRate  float64
+
+	// Wave-based spawning
+	waveNumber             int
+	enemiesPerWave         int
+	enemiesSpawnedThisWave int
+	waveSpawnTimer         float64 // Time between enemy spawns within a wave
+	waveCooldown           float64 // Time between waves
 
 	// Last update time for delta time calculation
 	lastUpdateTime time.Time
@@ -40,24 +47,28 @@ func NewGame(config Config) *Game {
 	renderer := NewRenderer(camera)
 
 	game := &Game{
-		world:           world,
-		collisionSystem: collisionSystem,
-		renderer:        renderer,
-		camera:          camera,
-		config:          config,
-		maxProjectiles:  1000,
-		projectiles:     make([]*Entity, 0, 1000),
-		enemySpawnRate:  0.5, // Spawn enemy every 0.5 seconds
-		lastUpdateTime:  time.Now(),
+		world:                  world,
+		collisionSystem:        collisionSystem,
+		renderer:               renderer,
+		camera:                 camera,
+		config:                 config,
+		maxProjectiles:         1000,
+		projectiles:            make([]*Entity, 0, 1000),
+		enemySpawnRate:         0.5, // Spawn enemy every 0.5 seconds (legacy, kept for compatibility)
+		waveNumber:             1,
+		enemiesPerWave:         10, // Start with 10 enemies per wave
+		enemiesSpawnedThisWave: 0,
+		waveSpawnTimer:         0.1, // Spawn enemies quickly within a wave (0.1 seconds apart)
+		waveCooldown:           5.0, // 5 seconds between waves
+		lastUpdateTime:         time.Now(),
 	}
 
 	// Create player
 	game.createPlayer()
 
-	// Spawn initial enemies
-	for i := 0; i < 10; i++ {
-		game.spawnEnemy()
-	}
+	// Spawn initial wave of enemies
+	game.enemiesPerWave = 10
+	game.enemiesSpawnedThisWave = 0
 
 	return game
 }
@@ -121,7 +132,7 @@ func (g *Game) respawnPlayer() {
 
 		// Reset rotation
 		g.player.Rotation = 0
-		
+
 		// Reset turret rotation
 		if playerInput, ok := g.player.Input.(*PlayerInput); ok {
 			playerInput.TurretRotation = 0.0
@@ -132,7 +143,7 @@ func (g *Game) respawnPlayer() {
 
 		// Reset age
 		g.player.Age = 0.0
-		
+
 		// Reset faction
 		g.player.Faction = FactionPlayer
 
@@ -152,13 +163,12 @@ func (g *Game) respawnPlayer() {
 		g.camera.Y = g.player.Y
 	}
 
-	// Reset spawn timer
+	// Reset spawn timer and wave state
 	g.enemySpawnTimer = 0
-
-	// Spawn initial enemies
-	for i := 0; i < 10; i++ {
-		g.spawnEnemy()
-	}
+	g.waveNumber = 1
+	g.enemiesPerWave = 10
+	g.enemiesSpawnedThisWave = 0
+	g.waveSpawnTimer = 0
 }
 
 // isPlayerRegistered checks if the player is registered in the world
@@ -212,21 +222,21 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 	if nearestEnemy != nil {
 		// Get aim point (turret position or ship center)
 		aimX, aimY, hasTurret := GetAimPoint(g.player)
-		
+
 		if hasTurret {
 			// Calculate predictive aim target
 			predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, nearestEnemy)
-			
+
 			// Store predicted target position
 			playerInput.TargetX = predictedX
 			playerInput.TargetY = predictedY
 			playerInput.HasTarget = true
-			
+
 			// Calculate angle from turret to predicted target
 			turretDx := predictedX - aimX
 			turretDy := predictedY - aimY
 			turretTargetRotation := math.Atan2(turretDy, turretDx)
-			
+
 			// Smoothly rotate turret towards target
 			maxTurretAngularVelocity := 8.0 // radians per second (faster than ship)
 			playerInput.TurretRotation = RotateTowardsTarget(
@@ -281,8 +291,8 @@ func (g *Game) spawnEnemy() {
 
 	// Choose random enemy type
 	enemyType := GetRandomEnemyType()
-	shipType := GetShipTypeForEnemyType(enemyType)
-	
+	shipType := GetEnemyTypeConfig(enemyType).ShipType
+
 	aiInput := CreateEnemyAIWithType(enemyType)
 	enemy := NewEntityWithShipType(x, y, EntityTypeEnemy, shipType, aiInput)
 	g.world.RegisterEntity(enemy)
@@ -292,11 +302,11 @@ func (g *Game) spawnEnemy() {
 // Fires from all active turrets
 func (g *Game) spawnProjectile(entity *Entity) {
 	shipConfig := GetShipTypeConfig(entity.ShipType)
-	
+
 	// Calculate ship rotation transforms once
 	cosRot := math.Cos(entity.Rotation)
 	sinRot := math.Sin(entity.Rotation)
-	
+
 	// Fire from all active turrets (checking weapon cooldowns)
 	hasActiveTurret := false
 	for i := range shipConfig.TurretMounts {
@@ -305,22 +315,22 @@ func (g *Game) spawnProjectile(entity *Entity) {
 			continue
 		}
 		hasActiveTurret = true
-		
+
 		// Check weapon cooldown for player
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
 			if !playerInput.CanShootWeapon(mount.WeaponType) {
 				continue // Skip this turret if weapon is on cooldown
 			}
 		}
-		
+
 		// Transform mount offset from ship-local to world coordinates
 		mountX := mount.OffsetX*cosRot - mount.OffsetY*sinRot
 		mountY := mount.OffsetX*sinRot + mount.OffsetY*cosRot
-		
+
 		// Calculate turret mount position in world coordinates
 		turretX := entity.X + mountX
 		turretY := entity.Y + mountY
-		
+
 		// Use turret rotation for shooting direction (or ship rotation + mount angle for AI)
 		var shootRotation float64
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
@@ -330,19 +340,19 @@ func (g *Game) spawnProjectile(entity *Entity) {
 		} else {
 			shootRotation = entity.Rotation + mount.Angle
 		}
-		
+
 		// Spawn position is at the end of the barrel (turret position + barrel length in turret direction)
 		spawnX := turretX + math.Cos(shootRotation)*mount.BarrelLength
 		spawnY := turretY + math.Sin(shootRotation)*mount.BarrelLength
-		
+
 		// Spawn weapon projectile based on turret's weapon type
 		g.spawnWeaponProjectile(mount.WeaponType, spawnX, spawnY, shootRotation, entity)
 	}
-	
+
 	// If no active turrets, use default weapon type and shoot from center
 	if !hasActiveTurret {
 		weaponType := shipConfig.DefaultWeaponType
-		
+
 		// Check weapon cooldown for player
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
 			if !playerInput.CanShootWeapon(weaponType) {
@@ -350,7 +360,7 @@ func (g *Game) spawnProjectile(entity *Entity) {
 			}
 			playerInput.ResetWeaponCooldown(weaponType)
 		}
-		
+
 		spawnOffset := entity.Radius + 8.0
 		spawnX := entity.X + math.Cos(entity.Rotation)*spawnOffset
 		spawnY := entity.Y + math.Sin(entity.Rotation)*spawnOffset
@@ -362,7 +372,7 @@ func (g *Game) spawnProjectile(entity *Entity) {
 // spawnWeaponProjectile spawns a projectile based on weapon type
 func (g *Game) spawnWeaponProjectile(weaponType WeaponType, spawnX, spawnY, rotation float64, owner *Entity) {
 	weaponConfig := GetWeaponConfig(weaponType)
-	
+
 	switch weaponType {
 	case WeaponTypeBullet:
 		g.spawnBullet(spawnX, spawnY, rotation, owner, weaponConfig)
@@ -382,16 +392,16 @@ func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weap
 		g.projectiles = g.projectiles[1:]
 		g.world.UnregisterEntity(projectile)
 		projectile.Reset()
-		
+
 		projectile.X = spawnX
 		projectile.Y = spawnY
 		projectile.Active = true
 		projectile.Health = weaponConfig.Damage
 		projectile.Type = EntityTypeProjectile
 		projectile.Radius = weaponConfig.Radius
-		projectile.Input = nil // Projectiles don't need input
-		projectile.Age = 0.0 // Reset age
-		projectile.Owner = owner // Track who fired this projectile
+		projectile.Input = nil                       // Projectiles don't need input
+		projectile.Age = 0.0                         // Reset age
+		projectile.Owner = owner                     // Track who fired this projectile
 		projectile.Faction = GetEntityFaction(owner) // Inherit faction from owner
 
 		// Set velocity based on shoot rotation
@@ -406,8 +416,8 @@ func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weap
 		projectile := NewEntity(spawnX, spawnY, weaponConfig.Radius, EntityTypeProjectile, nil)
 		projectile.Health = weaponConfig.Damage
 		projectile.MaxHealth = weaponConfig.Damage
-		projectile.Age = 0.0 // Initialize age
-		projectile.Owner = owner // Track who fired this projectile
+		projectile.Age = 0.0                         // Initialize age
+		projectile.Owner = owner                     // Track who fired this projectile
 		projectile.Faction = GetEntityFaction(owner) // Inherit faction from owner
 
 		// Set velocity based on shoot rotation
@@ -425,24 +435,24 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 	if owner == nil {
 		return
 	}
-	
+
 	// Get faction directly from owner entity (faction is set at spawn time)
 	ownerFaction := owner.Faction
-	
+
 	// Spawn homing entity with same faction as owner
-	homingEnemyType := EnemyTypeHomingSuicide
+	homingEnemyType := EnemyTypeRocket
 	homingShipType := GetShipTypeForEnemyType(homingEnemyType)
-	
+
 	homingAI := CreateEnemyAIWithType(homingEnemyType)
 	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
 	homingEnemy.Faction = ownerFaction // Inherit faction from owner
-	homingEnemy.NoCollision = true // Homing rockets don't collide with other entities (except targets)
-	
+	homingEnemy.NoCollision = true     // Homing rockets don't collide with other entities (except targets)
+
 	// Give the homing enemy initial velocity in the shooting direction
 	homingEnemy.VX = math.Cos(rotation) * weaponConfig.InitialVelocity
 	homingEnemy.VY = math.Sin(rotation) * weaponConfig.InitialVelocity
 	homingEnemy.Rotation = rotation
-	
+
 	g.world.RegisterEntity(homingEnemy)
 }
 
@@ -467,7 +477,7 @@ func (g *Game) Update() error {
 			if playerInput.ShouldRespawn() {
 				g.respawnPlayer()
 			}
-			
+
 			// Update player target acquisition AI
 			g.updatePlayerTargeting(playerInput, deltaTime)
 		}
@@ -545,11 +555,26 @@ func (g *Game) Update() error {
 		g.camera.Y += dy * 0.1
 	}
 
-	// Spawn enemies
-	g.enemySpawnTimer += deltaTime
-	if g.enemySpawnTimer >= g.enemySpawnRate {
-		g.enemySpawnTimer = 0
-		g.spawnEnemy()
+	// Wave-based enemy spawning
+	if g.enemiesSpawnedThisWave < g.enemiesPerWave {
+		// Still spawning enemies for current wave
+		g.waveSpawnTimer += deltaTime
+		if g.waveSpawnTimer >= 0.1 { // Spawn every 0.1 seconds within wave
+			g.waveSpawnTimer = 0
+			g.spawnEnemy()
+			g.enemiesSpawnedThisWave++
+		}
+	} else {
+		// Wave complete, wait for cooldown before next wave
+		g.enemySpawnTimer += deltaTime
+		if g.enemySpawnTimer >= g.waveCooldown {
+			g.enemySpawnTimer = 0
+			// Start next wave with +1 enemy
+			g.waveNumber++
+			g.enemiesPerWave++
+			g.enemiesSpawnedThisWave = 0
+			g.waveSpawnTimer = 0
+		}
 	}
 
 	return nil
@@ -565,4 +590,3 @@ func (g *Game) Draw(screen *ebiten.Image) {
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return g.config.ScreenWidth, g.config.ScreenHeight
 }
-

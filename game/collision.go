@@ -51,7 +51,7 @@ func (c *CollisionSystem) CheckCollisions() {
 				if entity.NoCollision && other.NoCollision {
 					continue
 				}
-				
+
 				// Skip collision if one has NoCollision and they're the same faction (homing rockets pass through allies)
 				if entity.NoCollision || other.NoCollision {
 					if GetEntityFaction(entity) == GetEntityFaction(other) {
@@ -59,7 +59,7 @@ func (c *CollisionSystem) CheckCollisions() {
 					}
 					// Different factions - allow collision check (for homing rocket explosions)
 				}
-				
+
 				// Check collision
 				if entity.IsColliding(other) {
 					c.HandleCollision(entity, other)
@@ -87,7 +87,7 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
 			// Different factions - homing suicide explodes
 			e2.Health -= 50.0 // Damage target
-			e1.Active = false  // Destroy homing enemy
+			e1.Active = false // Destroy homing enemy
 			e1.Health = 0
 			return
 		}
@@ -100,7 +100,7 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
 			// Different factions - homing suicide explodes
 			e1.Health -= 50.0 // Damage target
-			e2.Active = false  // Destroy homing enemy
+			e2.Active = false // Destroy homing enemy
 			e2.Health = 0
 			return
 		}
@@ -124,12 +124,12 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		isSuicide1 := false
 		isSuicide2 := false
 		if aiInput1, ok := e1.Input.(*AIInput); ok {
-			isSuicide1 = aiInput1.EnemyType == EnemyTypeHomingSuicide
+			isSuicide1 = aiInput1.EnemyType == EnemyTypeRocket
 		}
 		if aiInput2, ok := e2.Input.(*AIInput); ok {
-			isSuicide2 = aiInput2.EnemyType == EnemyTypeHomingSuicide
+			isSuicide2 = aiInput2.EnemyType == EnemyTypeRocket
 		}
-		
+
 		if !isSuicide1 && !isSuicide2 {
 			e1.Health -= 10.0
 			e2.Health -= 10.0
@@ -212,4 +212,3 @@ func (c *CollisionSystem) MoveEntity(entity *Entity) {
 	// Update cell membership if entity moved
 	c.world.UpdateEntityCell(entity)
 }
-

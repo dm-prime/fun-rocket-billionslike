@@ -24,7 +24,7 @@ func GetWeaponConfig(weaponType WeaponType) WeaponConfig {
 	case WeaponTypeBullet:
 		return WeaponConfig{
 			Type:            WeaponTypeBullet,
-			Damage:         10.0,
+			Damage:          10.0,
 			ProjectileSpeed: 500.0,
 			Cooldown:        0.1,
 			Radius:          2.5,
@@ -33,14 +33,13 @@ func GetWeaponConfig(weaponType WeaponType) WeaponConfig {
 	case WeaponTypeHomingMissile:
 		return WeaponConfig{
 			Type:            WeaponTypeHomingMissile,
-			Damage:         30.0, // Damage when homing enemy hits
-			ProjectileSpeed: 0.0, // Not used for homing missiles
+			Damage:          30.0, // Damage when homing enemy hits
+			ProjectileSpeed: 0.0,  // Not used for homing missiles
 			Cooldown:        1.0,
-			Radius:          0.0, // Not used for homing missiles
+			Radius:          0.0,   // Not used for homing missiles
 			InitialVelocity: 150.0, // Launch speed for homing enemy
 		}
 	default:
 		return GetWeaponConfig(WeaponTypeBullet)
 	}
 }
-

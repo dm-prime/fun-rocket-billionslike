@@ -171,7 +171,7 @@ func NewAIInput() *AIInput {
 	return &AIInput{
 		State:           AIStateMoving,
 		ShootCooldown:   1.0,
-		EnemyType:       EnemyTypeHomingSuicide, // Default
+		EnemyType:       EnemyTypeRocket, // Default
 		DesiredRotation: 0.0,
 	}
 }

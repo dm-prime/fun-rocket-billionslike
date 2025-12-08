@@ -27,4 +27,3 @@ func GetEntityFaction(entity *Entity) Faction {
 	}
 	return entity.Faction
 }
-

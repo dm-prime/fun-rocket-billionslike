@@ -211,20 +211,20 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			// Rotate the offset by the ship's rotation
 			cosRot := math.Cos(entity.Rotation)
 			sinRot := math.Sin(entity.Rotation)
-			
+
 			// Transform mount offset from ship-local to world coordinates
 			mountX := mount.OffsetX*cosRot - mount.OffsetY*sinRot
 			mountY := mount.OffsetX*sinRot + mount.OffsetY*cosRot
-			
+
 			// Convert to screen coordinates
 			turretSx, turretSy := r.camera.WorldToScreen(entity.X+mountX, entity.Y+mountY)
-			
+
 			// Draw turret as a circle and a line (barrel)
 			turretRadius := 4.0 * r.camera.Zoom
 			if turretRadius < 1.5 {
 				turretRadius = 1.5
 			}
-			
+
 			// Turret color (slightly lighter than ship)
 			var turretColor color.RGBA
 			if rgba, ok := clr.(color.RGBA); ok {
@@ -237,13 +237,13 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			} else {
 				turretColor = color.RGBA{200, 200, 200, 255} // Default gray
 			}
-			
+
 			// Draw turret circle (base)
 			vector.DrawFilledCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), turretColor, true)
-			
+
 			// Draw turret outline circle for better visibility
 			vector.StrokeCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), 1.5, turretColor, true)
-			
+
 			// Draw turret barrel (line showing direction)
 			// For player, use turret rotation; for others, use ship rotation + mount angle
 			var turretRotation float64
@@ -256,7 +256,7 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			} else {
 				turretRotation = entity.Rotation + mount.Angle
 			}
-			
+
 			// Barrel extends from center of turret circle
 			// Use barrel length from mount point, or default to 3x turret radius if not set
 			barrelLength := mount.BarrelLength * r.camera.Zoom
@@ -267,7 +267,7 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			barrelStartY := turretSy + math.Sin(turretRotation)*turretRadius
 			barrelEndX := turretSx + math.Cos(turretRotation)*barrelLength
 			barrelEndY := turretSy + math.Sin(turretRotation)*barrelLength
-			
+
 			// Draw barrel line (thicker for visibility)
 			vector.StrokeLine(screen, float32(barrelStartX), float32(barrelStartY),
 				float32(barrelEndX), float32(barrelEndY), 2.5, turretColor, true)
@@ -392,47 +392,47 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 // The front point extends further to clearly show direction (arrowhead shape)
 func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color, shipType ShipType) {
 	// Oblong triangle: front point extends further, back points form a wider base
-	frontLength := radius * 1.5  // Front extends 1.5x the radius
-	backOffset := radius * 0.5    // How far back the base is
-	
+	frontLength := radius * 1.5 // Front extends 1.5x the radius
+	backOffset := radius * 0.5  // How far back the base is
+
 	// Make homing enemies narrower
-	backWidth := radius * 0.9     // Half-width of the back base (default)
+	backWidth := radius * 0.9 // Half-width of the back base (default)
 	if shipType == ShipTypeHomingSuicide {
-		backWidth = radius * 0.4  // Narrower for homing rockets
+		backWidth = radius * 0.4 // Narrower for homing rockets
 	}
-	
+
 	// Front point (extends forward)
 	frontX := x + math.Cos(rotation)*frontLength
 	frontY := y + math.Sin(rotation)*frontLength
-	
+
 	// Back left point (perpendicular to rotation direction, offset backward)
 	backLeftX := x + math.Cos(rotation+math.Pi)*backOffset + math.Cos(rotation+math.Pi/2)*backWidth
 	backLeftY := y + math.Sin(rotation+math.Pi)*backOffset + math.Sin(rotation+math.Pi/2)*backWidth
-	
+
 	// Back right point
 	backRightX := x + math.Cos(rotation+math.Pi)*backOffset + math.Cos(rotation-math.Pi/2)*backWidth
 	backRightY := y + math.Sin(rotation+math.Pi)*backOffset + math.Sin(rotation-math.Pi/2)*backWidth
-	
+
 	points := [3][2]float64{
-		{frontX, frontY},           // Front point (tip)
-		{backLeftX, backLeftY},     // Back left
-		{backRightX, backRightY},   // Back right
+		{frontX, frontY},         // Front point (tip)
+		{backLeftX, backLeftY},   // Back left
+		{backRightX, backRightY}, // Back right
 	}
-	
+
 	// Draw triangle outline with thicker lines
 	for i := 0; i < 3; i++ {
 		next := (i + 1) % 3
-		vector.StrokeLine(screen, float32(points[i][0]), float32(points[i][1]), 
+		vector.StrokeLine(screen, float32(points[i][0]), float32(points[i][1]),
 			float32(points[next][0]), float32(points[next][1]), 2, clr, true)
 	}
-	
+
 	// Fill triangle by drawing lines from center to edges
 	centerX, centerY := x, y
 	for i := 0; i < 3; i++ {
 		vector.StrokeLine(screen, float32(centerX), float32(centerY),
 			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
 	}
-	
+
 	// Fill the back edge
 	vector.StrokeLine(screen, float32(backLeftX), float32(backLeftY),
 		float32(backRightX), float32(backRightY), 2, clr, true)
@@ -448,7 +448,7 @@ func (r *Renderer) drawSquare(screen *ebiten.Image, x, y, radius, rotation float
 		{x + math.Cos(rotation+3.927)*halfSize, y + math.Sin(rotation+3.927)*halfSize}, // Bottom-left (225 degrees)
 		{x + math.Cos(rotation+5.498)*halfSize, y + math.Sin(rotation+5.498)*halfSize}, // Top-left (315 degrees)
 	}
-	
+
 	// Draw filled square by drawing triangles
 	// Triangle 1: points 0, 1, 2
 	vector.StrokeLine(screen, float32(points[0][0]), float32(points[0][1]),
@@ -457,7 +457,7 @@ func (r *Renderer) drawSquare(screen *ebiten.Image, x, y, radius, rotation float
 		float32(points[2][0]), float32(points[2][1]), 2, clr, true)
 	vector.StrokeLine(screen, float32(points[2][0]), float32(points[2][1]),
 		float32(points[0][0]), float32(points[0][1]), 2, clr, true)
-	
+
 	// Triangle 2: points 0, 2, 3
 	vector.StrokeLine(screen, float32(points[0][0]), float32(points[0][1]),
 		float32(points[2][0]), float32(points[2][1]), 2, clr, true)
@@ -465,7 +465,7 @@ func (r *Renderer) drawSquare(screen *ebiten.Image, x, y, radius, rotation float
 		float32(points[3][0]), float32(points[3][1]), 2, clr, true)
 	vector.StrokeLine(screen, float32(points[3][0]), float32(points[3][1]),
 		float32(points[0][0]), float32(points[0][1]), 2, clr, true)
-	
+
 	// Fill by drawing lines from center
 	centerX, centerY := x, y
 	for i := 0; i < 4; i++ {
@@ -478,19 +478,19 @@ func (r *Renderer) drawSquare(screen *ebiten.Image, x, y, radius, rotation float
 func (r *Renderer) drawDiamond(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color) {
 	// Diamond (square rotated 45 degrees) pointing forward
 	points := [4][2]float64{
-		{x + math.Cos(rotation)*radius, y + math.Sin(rotation)*radius},           // Front point
+		{x + math.Cos(rotation)*radius, y + math.Sin(rotation)*radius},             // Front point
 		{x + math.Cos(rotation+1.571)*radius, y + math.Sin(rotation+1.571)*radius}, // Right point (90 degrees)
 		{x + math.Cos(rotation+3.142)*radius, y + math.Sin(rotation+3.142)*radius}, // Back point (180 degrees)
 		{x + math.Cos(rotation+4.712)*radius, y + math.Sin(rotation+4.712)*radius}, // Left point (270 degrees)
 	}
-	
+
 	// Draw diamond outline
 	for i := 0; i < 4; i++ {
 		next := (i + 1) % 4
 		vector.StrokeLine(screen, float32(points[i][0]), float32(points[i][1]),
 			float32(points[next][0]), float32(points[next][1]), 2, clr, true)
 	}
-	
+
 	// Fill diamond (draw lines from center to each point)
 	centerX, centerY := x, y
 	for i := 0; i < 4; i++ {
@@ -498,4 +498,3 @@ func (r *Renderer) drawDiamond(screen *ebiten.Image, x, y, radius, rotation floa
 			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
 	}
 }
-
