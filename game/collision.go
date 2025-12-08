@@ -47,6 +47,19 @@ func (c *CollisionSystem) CheckCollisions() {
 				}
 				checkedPairs[entity][other] = true
 
+				// Skip collision if both entities have NoCollision flag (they pass through each other)
+				if entity.NoCollision && other.NoCollision {
+					continue
+				}
+				
+				// Skip collision if one has NoCollision and they're the same faction (homing rockets pass through allies)
+				if entity.NoCollision || other.NoCollision {
+					if GetEntityFaction(entity) == GetEntityFaction(other) {
+						continue
+					}
+					// Different factions - allow collision check (for homing rocket explosions)
+				}
+				
 				// Check collision
 				if entity.IsColliding(other) {
 					c.HandleCollision(entity, other)
@@ -69,13 +82,17 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 	}
 
 	// Check if either entity is a homing suicide enemy colliding with opposite faction
-	// Homing suicide enemies explode on contact with opposite faction
+	// Homing suicide enemies explode on contact with opposite faction (even if NoCollision is set)
 	if e1.ShipType == ShipTypeHomingSuicide && e2.ShipType != ShipTypeHomingSuicide {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
 			// Different factions - homing suicide explodes
 			e2.Health -= 50.0 // Damage target
 			e1.Active = false  // Destroy homing enemy
 			e1.Health = 0
+			return
+		}
+		// Same faction - skip collision if NoCollision is set
+		if e1.NoCollision {
 			return
 		}
 	}
@@ -87,6 +104,15 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 			e2.Health = 0
 			return
 		}
+		// Same faction - skip collision if NoCollision is set
+		if e2.NoCollision {
+			return
+		}
+	}
+
+	// Skip push apart if either entity has NoCollision flag
+	if e1.NoCollision || e2.NoCollision {
+		return
 	}
 
 	// Entity-to-entity collisions (push apart)

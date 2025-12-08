@@ -144,9 +144,22 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 			clr = color.RGBA{255, 255, 0, 255} // Yellow fallback if no owner
 		}
 	} else {
-		// Use ship type for color
-		shipConfig := GetShipTypeConfig(entity.ShipType)
-		clr = shipConfig.Color
+		// For homing rockets, use faction-based colors
+		if entity.ShipType == ShipTypeHomingSuicide {
+			entityFaction := GetEntityFaction(entity)
+			switch entityFaction {
+			case FactionPlayer:
+				clr = color.RGBA{0, 255, 0, 255} // Green for player faction
+			case FactionEnemy:
+				clr = color.RGBA{255, 0, 0, 255} // Red for enemy faction
+			default:
+				clr = color.RGBA{255, 100, 0, 255} // Orange fallback
+			}
+		} else {
+			// Use ship type for color
+			shipConfig := GetShipTypeConfig(entity.ShipType)
+			clr = shipConfig.Color
+		}
 	}
 
 	// Draw entity based on ship shape
@@ -168,7 +181,7 @@ func (r *Renderer) RenderEntity(screen *ebiten.Image, entity *Entity, player *En
 	case ShipShapeCircle:
 		vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
 	case ShipShapeTriangle:
-		r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr)
+		r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, entity.ShipType)
 	case ShipShapeSquare:
 		r.drawSquare(screen, sx, sy, radius, entity.Rotation, clr)
 	case ShipShapeDiamond:
@@ -377,11 +390,16 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 
 // drawTriangle draws an oblong triangle shape rotated by the entity's rotation
 // The front point extends further to clearly show direction (arrowhead shape)
-func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color) {
+func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color, shipType ShipType) {
 	// Oblong triangle: front point extends further, back points form a wider base
 	frontLength := radius * 1.5  // Front extends 1.5x the radius
 	backOffset := radius * 0.5    // How far back the base is
-	backWidth := radius * 0.9     // Half-width of the back base
+	
+	// Make homing enemies narrower
+	backWidth := radius * 0.9     // Half-width of the back base (default)
+	if shipType == ShipTypeHomingSuicide {
+		backWidth = radius * 0.4  // Narrower for homing rockets
+	}
 	
 	// Front point (extends forward)
 	frontX := x + math.Cos(rotation)*frontLength

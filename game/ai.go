@@ -15,7 +15,7 @@ const (
 )
 
 // UpdateAI updates AI input providers with behavior patterns
-func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float64) {
+func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, allEntities []*Entity, deltaTime float64) {
 	if aiInput == nil {
 		return
 	}
@@ -27,12 +27,25 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime float6
 	entityFaction := GetEntityFaction(entity)
 	targetFaction := GetOppositeFaction(entityFaction)
 
-	// Find target of opposite faction (use player as primary target for now)
+	// Find nearest target of opposite faction
 	var targetEntity *Entity
-	if player != nil && player.Active {
-		playerFaction := GetEntityFaction(player)
-		if playerFaction == targetFaction {
-			targetEntity = player
+	nearestDistance := math.MaxFloat64
+	
+	for _, candidate := range allEntities {
+		if !candidate.Active || candidate == entity || candidate.Health <= 0 {
+			continue
+		}
+		
+		candidateFaction := GetEntityFaction(candidate)
+		if candidateFaction == targetFaction {
+			dx := candidate.X - entity.X
+			dy := candidate.Y - entity.Y
+			distance := math.Sqrt(dx*dx + dy*dy)
+			
+			if distance < nearestDistance {
+				nearestDistance = distance
+				targetEntity = candidate
+			}
 		}
 	}
 

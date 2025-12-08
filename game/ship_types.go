@@ -17,11 +17,11 @@ const (
 
 // TurretMountPoint defines a turret mount position on a ship
 type TurretMountPoint struct {
-	OffsetX      float64   // X offset from ship center (relative to ship forward direction)
-	OffsetY      float64   // Y offset from ship center (relative to ship forward direction)
-	Angle        float64   // Angle offset from ship forward direction (in radians)
-	Active       bool      // Whether this mount point has an active turret
-	BarrelLength float64   // Length of the barrel (where bullets spawn)
+	OffsetX      float64    // X offset from ship center (relative to ship forward direction)
+	OffsetY      float64    // Y offset from ship center (relative to ship forward direction)
+	Angle        float64    // Angle offset from ship forward direction (in radians)
+	Active       bool       // Whether this mount point has an active turret
+	BarrelLength float64    // Length of the barrel (where bullets spawn)
 	WeaponType   WeaponType // Type of weapon mounted on this turret
 }
 
@@ -69,19 +69,19 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			ShootCooldown:       0.1,                        // Very fast shooting
 			Color:               color.RGBA{0, 255, 0, 255}, // Green
 			Shape:               ShipShapeTriangle,
-			AngularAcceleration: 5.0,  // Radians per second squared
-			MaxAngularSpeed:     3.0,  // Radians per second
-			Friction:            0.98, // Slight friction
+			AngularAcceleration: 5.0,              // Radians per second squared
+			MaxAngularSpeed:     3.0,              // Radians per second
+			Friction:            0.98,             // Slight friction
 			DefaultWeaponType:   WeaponTypeBullet, // Fallback weapon type
 			TurretMounts: []TurretMountPoint{
-				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeBullet}, // Front mount (active)
-				{OffsetX: 0.0, OffsetY: 5.0, Angle: 0.0, Active: false, BarrelLength: 12.0, WeaponType: WeaponTypeBullet}, // Rear mount (inactive)
+				{OffsetX: 0.0, OffsetY: -8.0, Angle: 0.0, Active: true, BarrelLength: 12.0, WeaponType: WeaponTypeBullet},        // Front mount (active) - bullets
+				{OffsetX: 6.0, OffsetY: -6.0, Angle: 0.0, Active: true, BarrelLength: 10.0, WeaponType: WeaponTypeHomingMissile}, // Right mount (active) - rockets
 			},
 		}
 	case ShipTypeHomingSuicide:
 		return ShipTypeConfig{
 			Type:                ShipTypeHomingSuicide,
-			Name:                "Homing Suicide",
+			Name:                "Homing Rocket",
 			Speed:               200.0, // Max speed
 			Acceleration:        350.0, // Thrust acceleration
 			Health:              1.0,
@@ -92,7 +92,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			AngularAcceleration: 4.0,                  // Radians per second squared
 			MaxAngularSpeed:     2.5,                  // Radians per second
 			Friction:            0.97,                 // Moderate friction
-			DefaultWeaponType:   WeaponTypeBullet,    // Not used (doesn't shoot)
+			DefaultWeaponType:   WeaponTypeBullet,     // Not used (doesn't shoot)
 			TurretMounts:        []TurretMountPoint{}, // No turrets
 		}
 	case ShipTypeShooter:
@@ -106,11 +106,11 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			ShootCooldown:       1.0 + rand.Float64()*1.5,   // 1-2.5 seconds
 			Color:               color.RGBA{255, 0, 0, 255}, // Red
 			Shape:               ShipShapeTriangle,
-			AngularAcceleration: 3.0,                        // Radians per second squared
-			MaxAngularSpeed:     2.0,                        // Radians per second
-			Friction:            0.96,                       // More friction
-			DefaultWeaponType:   WeaponTypeHomingMissile,   // Spawns homing enemies
-			TurretMounts:        []TurretMountPoint{},      // No turrets (shoots from center)
+			AngularAcceleration: 3.0,                     // Radians per second squared
+			MaxAngularSpeed:     2.0,                     // Radians per second
+			Friction:            0.96,                    // More friction
+			DefaultWeaponType:   WeaponTypeHomingMissile, // Spawns homing enemies
+			TurretMounts:        []TurretMountPoint{},    // No turrets (shoots from center)
 		}
 	default:
 		return GetShipTypeConfig(ShipTypePlayer)

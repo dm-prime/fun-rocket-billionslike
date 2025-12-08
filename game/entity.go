@@ -50,6 +50,9 @@ type Entity struct {
 
 	// Owner entity (for projectiles, tracks who fired them)
 	Owner *Entity
+
+	// NoCollision flag - if true, entity doesn't collide with other entities (except for special cases like explosions)
+	NoCollision bool
 }
 
 // EntityType identifies the type of entity
@@ -204,5 +207,6 @@ func (e *Entity) Reset() {
 	e.CellY = 0
 	e.Age = 0.0
 	e.Faction = FactionEnemy // Reset to default
+	e.NoCollision = false
 }
 

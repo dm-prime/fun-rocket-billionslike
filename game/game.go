@@ -181,14 +181,21 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 		return
 	}
 
-	// Find nearest enemy
+	// Find nearest enemy (opposite faction)
 	var nearestEnemy *Entity
 	nearestDistance := playerInput.MaxTargetRange
+	playerFaction := GetEntityFaction(g.player)
 
-	// Search through all entities to find nearest enemy
+	// Search through all entities to find nearest enemy of opposite faction
 	for _, entity := range g.world.AllEntities {
-		if !entity.Active || entity.Type != EntityTypeEnemy || entity.Health <= 0 {
+		if !entity.Active || entity.Health <= 0 {
 			continue
+		}
+
+		// Only target entities of opposite faction
+		entityFaction := GetEntityFaction(entity)
+		if entityFaction == playerFaction {
+			continue // Skip friendly entities
 		}
 
 		dx := entity.X - g.player.X
@@ -282,60 +289,74 @@ func (g *Game) spawnEnemy() {
 }
 
 // spawnProjectile spawns a projectile from an entity using weapon types
+// Fires from all active turrets
 func (g *Game) spawnProjectile(entity *Entity) {
-	// Determine spawn position and rotation
-	var spawnX, spawnY float64
-	var shootRotation float64
-	var weaponType WeaponType
-	
 	shipConfig := GetShipTypeConfig(entity.ShipType)
 	
-	// Try to get weapon type from active turret mount
-	var activeMount *TurretMountPoint
-	for i := range shipConfig.TurretMounts {
-		if shipConfig.TurretMounts[i].Active {
-			activeMount = &shipConfig.TurretMounts[i]
-			break
-		}
-	}
+	// Calculate ship rotation transforms once
+	cosRot := math.Cos(entity.Rotation)
+	sinRot := math.Sin(entity.Rotation)
 	
-	if activeMount != nil {
-		// Calculate turret position relative to ship center
-		cosRot := math.Cos(entity.Rotation)
-		sinRot := math.Sin(entity.Rotation)
+	// Fire from all active turrets (checking weapon cooldowns)
+	hasActiveTurret := false
+	for i := range shipConfig.TurretMounts {
+		mount := &shipConfig.TurretMounts[i]
+		if !mount.Active {
+			continue
+		}
+		hasActiveTurret = true
+		
+		// Check weapon cooldown for player
+		if playerInput, ok := entity.Input.(*PlayerInput); ok {
+			if !playerInput.CanShootWeapon(mount.WeaponType) {
+				continue // Skip this turret if weapon is on cooldown
+			}
+		}
 		
 		// Transform mount offset from ship-local to world coordinates
-		mountX := activeMount.OffsetX*cosRot - activeMount.OffsetY*sinRot
-		mountY := activeMount.OffsetX*sinRot + activeMount.OffsetY*cosRot
-		
-		// Use turret rotation for shooting direction
-		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			shootRotation = playerInput.TurretRotation
-		} else {
-			shootRotation = entity.Rotation + activeMount.Angle
-		}
+		mountX := mount.OffsetX*cosRot - mount.OffsetY*sinRot
+		mountY := mount.OffsetX*sinRot + mount.OffsetY*cosRot
 		
 		// Calculate turret mount position in world coordinates
 		turretX := entity.X + mountX
 		turretY := entity.Y + mountY
 		
-		// Spawn position is at the end of the barrel (turret position + barrel length in turret direction)
-		spawnX = turretX + math.Cos(shootRotation)*activeMount.BarrelLength
-		spawnY = turretY + math.Sin(shootRotation)*activeMount.BarrelLength
+		// Use turret rotation for shooting direction (or ship rotation + mount angle for AI)
+		var shootRotation float64
+		if playerInput, ok := entity.Input.(*PlayerInput); ok {
+			shootRotation = playerInput.TurretRotation
+			// Reset weapon cooldown after firing
+			playerInput.ResetWeaponCooldown(mount.WeaponType)
+		} else {
+			shootRotation = entity.Rotation + mount.Angle
+		}
 		
-		// Get weapon type from turret mount
-		weaponType = activeMount.WeaponType
-	} else {
-		// No active turret, use default weapon type and shoot from center
-		weaponType = shipConfig.DefaultWeaponType
-		spawnOffset := entity.Radius + 8.0
-		spawnX = entity.X + math.Cos(entity.Rotation)*spawnOffset
-		spawnY = entity.Y + math.Sin(entity.Rotation)*spawnOffset
-		shootRotation = entity.Rotation
+		// Spawn position is at the end of the barrel (turret position + barrel length in turret direction)
+		spawnX := turretX + math.Cos(shootRotation)*mount.BarrelLength
+		spawnY := turretY + math.Sin(shootRotation)*mount.BarrelLength
+		
+		// Spawn weapon projectile based on turret's weapon type
+		g.spawnWeaponProjectile(mount.WeaponType, spawnX, spawnY, shootRotation, entity)
 	}
 	
-	// Spawn weapon projectile based on weapon type
-	g.spawnWeaponProjectile(weaponType, spawnX, spawnY, shootRotation, entity)
+	// If no active turrets, use default weapon type and shoot from center
+	if !hasActiveTurret {
+		weaponType := shipConfig.DefaultWeaponType
+		
+		// Check weapon cooldown for player
+		if playerInput, ok := entity.Input.(*PlayerInput); ok {
+			if !playerInput.CanShootWeapon(weaponType) {
+				return // Can't shoot, weapon on cooldown
+			}
+			playerInput.ResetWeaponCooldown(weaponType)
+		}
+		
+		spawnOffset := entity.Radius + 8.0
+		spawnX := entity.X + math.Cos(entity.Rotation)*spawnOffset
+		spawnY := entity.Y + math.Sin(entity.Rotation)*spawnOffset
+		shootRotation := entity.Rotation
+		g.spawnWeaponProjectile(weaponType, spawnX, spawnY, shootRotation, entity)
+	}
 }
 
 // spawnWeaponProjectile spawns a projectile based on weapon type
@@ -401,8 +422,12 @@ func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weap
 
 // spawnHomingMissile spawns a homing enemy (missile) that targets the opposite faction
 func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entity, weaponConfig WeaponConfig) {
-	// Determine faction of the owner
-	ownerFaction := GetEntityFaction(owner)
+	if owner == nil {
+		return
+	}
+	
+	// Get faction directly from owner entity (faction is set at spawn time)
+	ownerFaction := owner.Faction
 	
 	// Spawn homing entity with same faction as owner
 	homingEnemyType := EnemyTypeHomingSuicide
@@ -411,6 +436,7 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 	homingAI := CreateEnemyAIWithType(homingEnemyType)
 	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
 	homingEnemy.Faction = ownerFaction // Inherit faction from owner
+	homingEnemy.NoCollision = true // Homing rockets don't collide with other entities (except targets)
 	
 	// Give the homing enemy initial velocity in the shooting direction
 	homingEnemy.VX = math.Cos(rotation) * weaponConfig.InitialVelocity
@@ -460,7 +486,7 @@ func (g *Game) Update() error {
 			// Update AI if it's an enemy
 			if entity.Type == EntityTypeEnemy {
 				if aiInput, ok := entity.Input.(*AIInput); ok {
-					UpdateAI(aiInput, entity, g.player, deltaTime)
+					UpdateAI(aiInput, entity, g.player, g.world.AllEntities, deltaTime)
 				}
 			}
 		}
