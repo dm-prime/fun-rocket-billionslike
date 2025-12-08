@@ -113,7 +113,7 @@ func NewRenderer(camera *Camera) *Renderer {
 }
 
 // Render renders all visible entities
-func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, score int) {
+func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, score int, fps float64) {
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
@@ -127,8 +127,8 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 		}
 	}
 
-	// Render UI (score and restart message)
-	r.RenderUI(screen, player, score)
+	// Render UI (score, FPS, and restart message)
+	r.RenderUI(screen, player, score, fps)
 }
 
 // RenderEntity renders a single entity
@@ -500,11 +500,15 @@ func (r *Renderer) drawDiamond(screen *ebiten.Image, x, y, radius, rotation floa
 	}
 }
 
-// RenderUI renders the user interface (score, restart message, etc.)
-func (r *Renderer) RenderUI(screen *ebiten.Image, player *Entity, score int) {
+// RenderUI renders the user interface (score, FPS, restart message, etc.)
+func (r *Renderer) RenderUI(screen *ebiten.Image, player *Entity, score int, fps float64) {
 	// Always show score
 	scoreText := fmt.Sprintf("Score: %d", score)
 	r.drawText(screen, scoreText, 10, 30, color.RGBA{255, 255, 255, 255})
+
+	// Always show FPS
+	fpsText := fmt.Sprintf("FPS: %.0f", fps)
+	r.drawText(screen, fpsText, 10, 50, color.RGBA{200, 200, 200, 255})
 
 	// Show restart message if player is dead
 	if player == nil || !player.Active || player.Health <= 0 {

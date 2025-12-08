@@ -38,6 +38,11 @@ type Game struct {
 	// Player score
 	score int
 
+	// FPS tracking
+	fps              float64
+	fpsUpdateCounter int
+	fpsUpdateTimer   float64
+
 	// Last update time for delta time calculation
 	lastUpdateTime time.Time
 }
@@ -64,6 +69,9 @@ func NewGame(config Config) *Game {
 		waveSpawnTimer:         0.1, // Spawn enemies quickly within a wave (0.1 seconds apart)
 		waveCooldown:           5.0, // 5 seconds between waves
 		score:                  0,
+		fps:                    60.0,
+		fpsUpdateCounter:       0,
+		fpsUpdateTimer:         0.0,
 		lastUpdateTime:         time.Now(),
 	}
 
@@ -513,6 +521,17 @@ func (g *Game) Update() error {
 		deltaTime = 0.1
 	}
 
+	// Update FPS calculation (update every 0.5 seconds)
+	g.fpsUpdateTimer += deltaTime
+	g.fpsUpdateCounter++
+	if g.fpsUpdateTimer >= 0.5 {
+		if g.fpsUpdateCounter > 0 {
+			g.fps = float64(g.fpsUpdateCounter) / g.fpsUpdateTimer
+		}
+		g.fpsUpdateCounter = 0
+		g.fpsUpdateTimer = 0.0
+	}
+
 	// Update player input
 	if g.player != nil && g.player.Input != nil {
 		g.player.Input.Update(deltaTime)
@@ -636,7 +655,7 @@ func (g *Game) Update() error {
 // Draw renders the game
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{20, 20, 40, 255}) // Dark blue background
-	g.renderer.Render(screen, g.world, g.player, g.score)
+	g.renderer.Render(screen, g.world, g.player, g.score, g.fps)
 }
 
 // Layout returns the game's screen size
