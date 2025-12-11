@@ -17,6 +17,7 @@ type WeaponConfig struct {
 	Cooldown        float64
 	Radius          float64 // For projectiles
 	InitialVelocity float64 // For homing missiles (launch speed)
+	Lifetime        float64 // For homing missiles (time before auto-detonation in seconds)
 }
 
 // GetWeaponConfig returns configuration for a weapon type
@@ -30,6 +31,7 @@ func GetWeaponConfig(weaponType WeaponType) WeaponConfig {
 			Cooldown:        0.1,
 			Radius:          2.5,
 			InitialVelocity: 0.0, // Not used for bullets
+			Lifetime:        0.0, // No lifetime limit for bullets
 		}
 	case WeaponTypeHomingMissile:
 		return WeaponConfig{
@@ -39,6 +41,7 @@ func GetWeaponConfig(weaponType WeaponType) WeaponConfig {
 			Cooldown:        1.0,
 			Radius:          0.0,   // Not used for homing missiles
 			InitialVelocity: 150.0, // Launch speed for homing enemy
+			Lifetime:        5.0,   // Auto-detonate after 5 seconds
 		}
 	default:
 		return GetWeaponConfig(WeaponTypeBullet)

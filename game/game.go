@@ -504,6 +504,7 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
 	homingEnemy.Faction = ownerFaction // Inherit faction from owner
 	homingEnemy.NoCollision = true     // Homing rockets don't collide with other entities (except targets)
+	homingEnemy.Lifetime = weaponConfig.Lifetime // Set lifetime for auto-detonation
 
 	// Give the homing enemy initial velocity in the shooting direction
 	homingEnemy.VX = math.Cos(rotation) * weaponConfig.InitialVelocity
@@ -571,6 +572,15 @@ func (g *Game) Update() error {
 
 		// Update entity
 		entity.Update(deltaTime)
+
+		// Check lifetime for homing missiles (auto-detonate after lifetime expires)
+		if entity.Lifetime > 0 && entity.Age >= entity.Lifetime {
+			// Lifetime expired - detonate the missile
+			if entity.ShipType == ShipTypeHomingSuicide {
+				entity.Active = false
+				entity.Health = 0
+			}
+		}
 
 		// Handle shooting
 		if entity.Input != nil && entity.Input.ShouldShoot() {

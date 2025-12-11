@@ -53,6 +53,10 @@ type Entity struct {
 
 	// NoCollision flag - if true, entity doesn't collide with other entities (except for special cases like explosions)
 	NoCollision bool
+
+	// Lifetime in seconds (0 means no lifetime limit)
+	// When Age >= Lifetime, entity will be destroyed
+	Lifetime float64
 }
 
 // EntityType identifies the type of entity
@@ -205,7 +209,8 @@ func (e *Entity) Reset() {
 	e.Active = false
 	e.CellX = 0
 	e.CellY = 0
-	e.Age = 0.0
-	e.Faction = FactionEnemy // Reset to default
-	e.NoCollision = false
+		e.Age = 0.0
+		e.Faction = FactionEnemy // Reset to default
+		e.NoCollision = false
+		e.Lifetime = 0.0
 }
