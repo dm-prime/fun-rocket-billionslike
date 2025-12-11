@@ -1,9 +1,11 @@
 package game
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -43,6 +45,13 @@ type Game struct {
 	fpsUpdateCounter int
 	fpsUpdateTimer   float64
 
+	// Performance profiling
+	profiler *Profiler
+
+	// FPS drop detection
+	lastFPSDropTime time.Time
+	fpsDropCooldown time.Duration
+
 	// Last update time for delta time calculation
 	lastUpdateTime time.Time
 }
@@ -72,6 +81,8 @@ func NewGame(config Config) *Game {
 		fps:                    60.0,
 		fpsUpdateCounter:       0,
 		fpsUpdateTimer:         0.0,
+		profiler:               NewProfiler(),
+		fpsDropCooldown:        10 * time.Second, // Don't trigger profiling more than once every 10 seconds
 		lastUpdateTime:         time.Now(),
 	}
 
@@ -533,6 +544,28 @@ func (g *Game) Update() error {
 		if g.fpsUpdateCounter > 0 {
 			g.fps = float64(g.fpsUpdateCounter) / g.fpsUpdateTimer
 		}
+		
+		// Detect FPS drops below 60 FPS
+		if g.fps < 60.0 && time.Since(g.lastFPSDropTime) >= g.fpsDropCooldown {
+			g.lastFPSDropTime = time.Now()
+			
+			// Generate reason string with context
+			entityCount := len(g.world.AllEntities)
+			projectileCount := len(g.projectiles)
+			reason := fmt.Sprintf("fps%.0f-entities%d-projectiles%d", g.fps, entityCount, projectileCount)
+			
+			// Trigger performance capture
+			err := g.profiler.CaptureProfile(reason)
+			if err != nil {
+				// Silently ignore cooldown errors, but log other errors
+				if !strings.Contains(err.Error(), "cooldown") {
+					fmt.Printf("Failed to capture profile: %v\n", err)
+				}
+			} else {
+				fmt.Printf("FPS drop detected (%.0f FPS). Capturing performance profile...\n", g.fps)
+			}
+		}
+		
 		g.fpsUpdateCounter = 0
 		g.fpsUpdateTimer = 0.0
 	}
