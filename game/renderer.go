@@ -114,6 +114,12 @@ func NewRenderer(camera *Camera) *Renderer {
 
 // Render renders all visible entities
 func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, score int, fps float64) {
+	// Render cell grid on background (if debug flag is enabled)
+	debugState := GetDebugState()
+	if debugState.ShowGrid {
+		r.renderCellGrid(screen, world)
+	}
+
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
@@ -308,6 +314,13 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		healthPercent := entity.Health / entity.MaxHealth
 		healthWidth := barWidth * healthPercent
 		vector.DrawFilledRect(screen, float32(barX), float32(barY), float32(healthWidth), float32(barHeight), color.RGBA{0, 255, 0, 255}, true)
+	}
+
+	// Render cell pointer ID (cell coordinates) on entity (if debug flag is enabled)
+	debugState := GetDebugState()
+	if debugState.ShowGrid {
+		cellIDText := fmt.Sprintf("(%d,%d)", entity.CellX, entity.CellY)
+		r.drawText(screen, cellIDText, sx+radius+5, sy-radius, color.RGBA{200, 200, 200, 200})
 	}
 }
 
@@ -707,4 +720,56 @@ func (r *Renderer) drawTransparentCircle(screen *ebiten.Image, x, y, radius floa
 	op.GeoM.Translate(x-radius-2, y-radius-2)
 	op.ColorM.Scale(1, 1, 1, float64(clr.A)/255.0)
 	screen.DrawImage(circleImg, op)
+}
+
+// renderCellGrid renders the cell grid on the background
+func (r *Renderer) renderCellGrid(screen *ebiten.Image, world *World) {
+	// Get world bounds of viewport
+	minX, minY := r.camera.ScreenToWorld(0, 0)
+	maxX, maxY := r.camera.ScreenToWorld(r.camera.Width, r.camera.Height)
+
+	// Expand bounds by cell size to include partially visible cells
+	minX -= world.Config.CellSize
+	minY -= world.Config.CellSize
+	maxX += world.Config.CellSize
+	maxY += world.Config.CellSize
+
+	// Clamp to world bounds
+	minX = math.Max(0, math.Min(minX, world.Config.WorldWidth))
+	minY = math.Max(0, math.Min(minY, world.Config.WorldHeight))
+	maxX = math.Max(0, math.Min(maxX, world.Config.WorldWidth))
+	maxY = math.Max(0, math.Min(maxY, world.Config.WorldHeight))
+
+	// Calculate cell boundaries
+	cellSize := world.Config.CellSize
+
+	// Draw vertical grid lines
+	startCellX := int(minX / cellSize)
+	endCellX := int(maxX / cellSize)
+	for x := startCellX; x <= endCellX; x++ {
+		worldX := float64(x) * cellSize
+		sx1, sy1 := r.camera.WorldToScreen(worldX, minY)
+		sx2, sy2 := r.camera.WorldToScreen(worldX, maxY)
+		
+		// Only draw if line is visible on screen
+		if sx1 >= -10 && sx1 <= r.camera.Width+10 {
+			gridColor := color.RGBA{50, 50, 70, 100} // Dark blue-gray, semi-transparent
+			r.drawTransparentLine(screen, sx1, sy1, sx2, sy2, gridColor)
+		}
+	}
+
+	// Draw horizontal grid lines
+	startCellY := int(minY / cellSize)
+	endCellY := int(maxY / cellSize)
+	for y := startCellY; y <= endCellY; y++ {
+		worldY := float64(y) * cellSize
+		sx1, sy1 := r.camera.WorldToScreen(minX, worldY)
+		sx2, sy2 := r.camera.WorldToScreen(maxX, worldY)
+		
+		// Only draw if line is visible on screen
+		if sy1 >= -10 && sy1 <= r.camera.Height+10 {
+			gridColor := color.RGBA{50, 50, 70, 100} // Dark blue-gray, semi-transparent
+			r.drawTransparentLine(screen, sx1, sy1, sx2, sy2, gridColor)
+		}
+	}
 }

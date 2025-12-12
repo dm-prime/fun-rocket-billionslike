@@ -5,10 +5,10 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
-	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // Game represents the main game state
@@ -52,6 +52,9 @@ type Game struct {
 	lastFPSDropTime time.Time
 	fpsDropCooldown time.Duration
 
+	// Game start time to ignore FPS drops during startup
+	gameStartTime time.Time
+
 	// Last update time for delta time calculation
 	lastUpdateTime time.Time
 }
@@ -83,6 +86,7 @@ func NewGame(config Config) *Game {
 		fpsUpdateTimer:         0.0,
 		profiler:               NewProfiler(),
 		fpsDropCooldown:        10 * time.Second, // Don't trigger profiling more than once every 10 seconds
+		gameStartTime:          time.Now(),
 		lastUpdateTime:         time.Now(),
 	}
 
@@ -607,6 +611,12 @@ func (g *Game) Update() error {
 		deltaTime = 0.1
 	}
 
+	// Handle debug key presses (F1 toggles grid display)
+	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		debugState := GetDebugState()
+		debugState.ShowGrid = !debugState.ShowGrid
+	}
+
 	// Update FPS calculation (update every 0.5 seconds)
 	g.fpsUpdateTimer += deltaTime
 	g.fpsUpdateCounter++
@@ -616,7 +626,9 @@ func (g *Game) Update() error {
 		}
 		
 		// Detect FPS drops below 60 FPS
-		if g.fps < 60.0 && time.Since(g.lastFPSDropTime) >= g.fpsDropCooldown {
+		// Skip detection in the first 3 seconds after game launch
+		timeSinceStart := time.Since(g.gameStartTime)
+		if g.fps < 60.0 && timeSinceStart >= 3*time.Second && time.Since(g.lastFPSDropTime) >= g.fpsDropCooldown {
 			g.lastFPSDropTime = time.Now()
 			
 			// Generate reason string with context
@@ -624,16 +636,15 @@ func (g *Game) Update() error {
 			projectileCount := len(g.projectiles)
 			reason := fmt.Sprintf("fps%.0f-entities%d-projectiles%d", g.fps, entityCount, projectileCount)
 			
-			// Trigger performance capture
-			err := g.profiler.CaptureProfile(reason)
+			// Capture profile synchronously before exiting (2 seconds should be enough to capture useful data)
+			fmt.Printf("FPS drop detected (%.0f FPS). Capturing performance profile...\n", g.fps)
+			err := g.profiler.CaptureProfileSync(reason, 2*time.Second)
 			if err != nil {
-				// Silently ignore cooldown errors, but log other errors
-				if !strings.Contains(err.Error(), "cooldown") {
-					fmt.Printf("Failed to capture profile: %v\n", err)
-				}
-			} else {
-				fmt.Printf("FPS drop detected (%.0f FPS). Capturing performance profile...\n", g.fps)
+				fmt.Printf("Failed to capture profile: %v\n", err)
 			}
+			
+			// Exit the game when FPS drop is detected
+			return fmt.Errorf("FPS drop detected (%.0f FPS). Exiting game.", g.fps)
 		}
 		
 		g.fpsUpdateCounter = 0

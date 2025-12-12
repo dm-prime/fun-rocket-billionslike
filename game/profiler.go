@@ -171,6 +171,96 @@ func (p *Profiler) analyzeProfile(baseName string) {
 	fmt.Printf("\n=== End Analysis ===\n\n")
 }
 
+// CaptureProfileSync captures CPU profile and trace synchronously (blocks until complete)
+// This is used when the game is about to exit, so we can ensure data is written
+func (p *Profiler) CaptureProfileSync(reason string, duration time.Duration) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
+	// Generate timestamped filename
+	timestamp := time.Now().Format("20060102-150405")
+	baseName := fmt.Sprintf("fps-drop-%s-%s", timestamp, reason)
+	
+	// Capture CPU profile and trace in parallel
+	var wg sync.WaitGroup
+	var cpuErr, traceErr error
+	wg.Add(2)
+	
+	go func() {
+		defer wg.Done()
+		cpuErr = p.captureCPUProfileSync(baseName, duration)
+	}()
+	
+	go func() {
+		defer wg.Done()
+		traceErr = p.captureTraceSync(baseName, duration)
+	}()
+	
+	// Wait for both captures to complete
+	wg.Wait()
+	
+	// Analyze the profile
+	p.analyzeProfile(baseName)
+	
+	if cpuErr != nil {
+		return cpuErr
+	}
+	if traceErr != nil {
+		return traceErr
+	}
+	return nil
+}
+
+// captureCPUProfileSync captures a CPU profile synchronously
+func (p *Profiler) captureCPUProfileSync(baseName string, duration time.Duration) error {
+	profilePath := filepath.Join(p.profilesDir, baseName+".cpu.prof")
+	
+	file, err := os.Create(profilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create profile file: %w", err)
+	}
+	defer file.Close()
+	
+	// Start CPU profiling
+	if err := pprof.StartCPUProfile(file); err != nil {
+		return fmt.Errorf("failed to start CPU profile: %w", err)
+	}
+	
+	// Profile for the specified duration
+	time.Sleep(duration)
+	
+	// Stop profiling
+	pprof.StopCPUProfile()
+	
+	fmt.Printf("CPU profile saved to: %s\n", profilePath)
+	return nil
+}
+
+// captureTraceSync captures an execution trace synchronously
+func (p *Profiler) captureTraceSync(baseName string, duration time.Duration) error {
+	tracePath := filepath.Join(p.profilesDir, baseName+".trace")
+	
+	file, err := os.Create(tracePath)
+	if err != nil {
+		return fmt.Errorf("failed to create trace file: %w", err)
+	}
+	defer file.Close()
+	
+	// Start tracing
+	if err := trace.Start(file); err != nil {
+		return fmt.Errorf("failed to start trace: %w", err)
+	}
+	
+	// Trace for the specified duration
+	time.Sleep(duration)
+	
+	// Stop tracing
+	trace.Stop()
+	
+	fmt.Printf("Trace saved to: %s\n", tracePath)
+	return nil
+}
+
 // IsProfiling returns whether a profile capture is currently in progress
 func (p *Profiler) IsProfiling() bool {
 	p.mu.Lock()

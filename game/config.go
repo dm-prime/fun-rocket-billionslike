@@ -21,7 +21,7 @@ type Config struct {
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		CellSize:     256.0,
+		CellSize:     2048.0, // 8x larger than before (256.0 * 8)
 		WorldWidth:   10000.0,
 		WorldHeight:  10000.0,
 		ScreenWidth:  1024,
