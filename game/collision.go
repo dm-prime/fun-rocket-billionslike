@@ -53,6 +53,11 @@ func (c *CollisionSystem) CheckCollisions() {
 					continue
 				}
 
+				// Skip collision if either entity is XP (XP has no collision)
+				if entity.Type == EntityTypeXP || other.Type == EntityTypeXP {
+					continue
+				}
+
 				// Skip collision if one has NoCollision and they're the same faction (homing rockets pass through allies)
 				if entity.NoCollision || other.NoCollision {
 					if GetEntityFaction(entity) == GetEntityFaction(other) {

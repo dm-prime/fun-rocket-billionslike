@@ -91,7 +91,7 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 		return ShipTypeConfig{
 			Type:                ShipTypeHomingSuicide,
 			Name:                "Homing Rocket",
-			Speed:               200.0, // Max speed
+			Speed:               300.0, // Max speed (increased from 200.0)
 			Acceleration:        350.0, // Thrust acceleration
 			Health:              1.0,
 			Radius:              6.0,

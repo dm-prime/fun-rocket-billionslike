@@ -589,7 +589,7 @@ func (g *Game) spawnXPFromEnemy(enemy *Entity, target *Entity) {
 	xp.Active = true
 	xp.Health = 1.0
 	xp.MaxHealth = scoreValue // Store score value in MaxHealth
-	xp.NoCollision = true // XP doesn't collide with enemies, only player
+	xp.NoCollision = true // XP doesn't collide with anything
 	xp.VX = 0
 	xp.VY = 0
 	g.world.RegisterEntity(xp)
