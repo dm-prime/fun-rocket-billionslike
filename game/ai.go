@@ -129,6 +129,9 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, de
 	// Update hasTarget flag
 	aiInput.hasTarget = targetEntity != nil && targetEntity.Active
 
+	// Store target entity for homing rockets
+	aiInput.TargetEntity = targetEntity
+
 	// Calculate target position based on behavior
 	targetX := entity.X
 	targetY := entity.Y

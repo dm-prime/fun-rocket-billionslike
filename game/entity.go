@@ -73,7 +73,7 @@ const (
 
 // HomingRocketConfig holds configuration for homing rockets
 type HomingRocketConfig struct {
-	Speed        float64 // Max speed (pixels per second)
+	Speed        float64 // Max speed (pixels per second) - not enforced, rockets have no speed limit
 	Acceleration float64 // Acceleration towards target (pixels per second squared)
 	Health       float64
 	Radius       float64
@@ -170,29 +170,50 @@ func (e *Entity) Update(deltaTime float64) {
 	// Update age
 	e.Age += deltaTime
 
-	// Special handling for homing rockets: no rotation physics, accelerate directly towards target
+	// Special handling for homing rockets: predictive intercept with acceleration
 	if e.Type == EntityTypeHomingRocket && e.Input != nil {
 		rocketConfig := GetHomingRocketConfig()
 		
 		// Get target from AI input
 		if aiInput, ok := e.Input.(*AIInput); ok {
-			// Calculate direction to target
-			dx := aiInput.TargetX - e.X
-			dy := aiInput.TargetY - e.Y
-			distance := math.Sqrt(dx*dx + dy*dy)
+			if aiInput.TargetEntity != nil && aiInput.TargetEntity.Active {
+				// Calculate optimal intercept direction accounting for both velocities
+				target := aiInput.TargetEntity
+				dirX, dirY := CalculateInterceptDirection(
+					e.X, e.Y,
+					e.VX, e.VY,
+					target.X, target.Y,
+					target.VX, target.VY,
+					rocketConfig.Acceleration,
+					deltaTime,
+				)
 
-			if distance > 0.1 {
-				// Normalize direction
-				dirX := dx / distance
-				dirY := dy / distance
+				// Update rotation to point in acceleration direction (for rendering)
+				e.Rotation = math.Atan2(dirY, dirX)
 
-				// Update rotation to point at target (for rendering)
-				e.Rotation = math.Atan2(dy, dx)
-
-				// Accelerate directly towards target
+				// Accelerate in intercept direction
 				acceleration := rocketConfig.Acceleration * deltaTime
 				e.VX += dirX * acceleration
 				e.VY += dirY * acceleration
+			} else {
+				// No target, use stored target position
+				dx := aiInput.TargetX - e.X
+				dy := aiInput.TargetY - e.Y
+				distance := math.Sqrt(dx*dx + dy*dy)
+
+				if distance > 0.1 {
+					// Normalize direction
+					dirX := dx / distance
+					dirY := dy / distance
+
+					// Update rotation to point at target (for rendering)
+					e.Rotation = math.Atan2(dy, dx)
+
+					// Accelerate towards target position
+					acceleration := rocketConfig.Acceleration * deltaTime
+					e.VX += dirX * acceleration
+					e.VY += dirY * acceleration
+				}
 			}
 		}
 
@@ -200,13 +221,7 @@ func (e *Entity) Update(deltaTime float64) {
 		e.VX *= rocketConfig.Friction
 		e.VY *= rocketConfig.Friction
 
-		// Clamp velocity to max speed
-		currentSpeed := math.Sqrt(e.VX*e.VX + e.VY*e.VY)
-		if currentSpeed > rocketConfig.Speed {
-			scale := rocketConfig.Speed / currentSpeed
-			e.VX *= scale
-			e.VY *= scale
-		}
+		// No speed limit for rockets (as requested)
 	} else if e.Input != nil && e.Type != EntityTypeProjectile {
 		// Standard physics for other entities
 		// Get ship config for physics properties

@@ -149,6 +149,9 @@ type AIInput struct {
 	// Target position to move towards
 	TargetX, TargetY float64
 
+	// Target entity (for homing rockets to access velocity)
+	TargetEntity *Entity
+
 	// Current behavior state
 	State AIState
 

@@ -140,3 +140,137 @@ func RotateTowardsTarget(currentRotation, targetRotation, maxAngularVelocity, de
 
 	return currentRotation + rotationStep
 }
+
+// CalculateInterceptDirection calculates the optimal acceleration direction for a homing rocket
+// to intercept a moving target, accounting for both rocket and target velocities
+// Uses proportional navigation with predictive intercept calculation
+// rocketX, rocketY: Rocket position
+// rocketVX, rocketVY: Rocket velocity
+// targetX, targetY: Target position
+// targetVX, targetVY: Target velocity
+// rocketAcceleration: Maximum acceleration of the rocket
+// deltaTime: Time step
+// Returns: directionX, directionY (normalized direction vector for acceleration)
+func CalculateInterceptDirection(rocketX, rocketY, rocketVX, rocketVY, targetX, targetY, targetVX, targetVY, rocketAcceleration, deltaTime float64) (directionX, directionY float64) {
+	// Calculate relative position and velocity
+	relX := targetX - rocketX
+	relY := targetY - rocketY
+	relVX := targetVX - rocketVX
+	relVY := targetVY - rocketVY
+
+	// Calculate distance
+	distance := math.Sqrt(relX*relX + relY*relY)
+	if distance < 0.1 {
+		// Already very close, maintain current direction
+		currentSpeed := math.Sqrt(rocketVX*rocketVX + rocketVY*rocketVY)
+		if currentSpeed > 0.1 {
+			return rocketVX / currentSpeed, rocketVY / currentSpeed
+		}
+		return 1.0, 0.0 // Default direction
+	}
+
+	// Calculate relative speed
+	relativeSpeed := math.Sqrt(relVX*relVX + relVY*relVY)
+
+	// Use iterative approach to find intercept point
+	// We need to solve: where will target be when rocket can intercept?
+	// Rocket can accelerate, so we need to account for that
+
+	// Initial estimate: time to intercept based on current positions and velocities
+	// Use a reasonable estimate considering acceleration
+	rocketSpeed := math.Sqrt(rocketVX*rocketVX + rocketVY*rocketVY)
+	closingSpeed := relativeSpeed
+	if closingSpeed < 1.0 {
+		closingSpeed = rocketSpeed + rocketAcceleration*deltaTime*5 // Estimate with acceleration
+	}
+
+	t := distance / math.Max(closingSpeed, 1.0)
+
+	// Iterate to find intercept point
+	for i := 0; i < 15; i++ {
+		// Predict target position at time t
+		predictedTargetX := targetX + targetVX*t
+		predictedTargetY := targetY + targetVY*t
+
+		// Calculate vector from rocket to predicted target
+		dx := predictedTargetX - rocketX
+		dy := predictedTargetY - rocketY
+		predictedDistance := math.Sqrt(dx*dx + dy*dy)
+
+		if predictedDistance < 0.1 {
+			// Very close, use direction to target
+			return dx / math.Max(predictedDistance, 0.1), dy / math.Max(predictedDistance, 0.1)
+		}
+
+		// Calculate required velocity to reach predicted position in time t
+		// v_required = (predicted_pos - rocket_pos) / t
+		reqVX := dx / t
+		reqVY := dy / t
+
+		// Calculate velocity change needed from current rocket velocity
+		deltaVX := reqVX - rocketVX
+		deltaVY := reqVY - rocketVY
+		deltaV := math.Sqrt(deltaVX*deltaVX + deltaVY*deltaVY)
+
+		// Maximum velocity change possible with acceleration in time t
+		maxDeltaV := rocketAcceleration * t
+
+		// If we can achieve the required velocity change, we have our direction
+		if deltaV <= maxDeltaV+0.01 {
+			// Normalize and return direction
+			if deltaV > 0.01 {
+				return deltaVX / deltaV, deltaVY / deltaV
+			}
+			// Very small change, use direction to predicted target
+			return dx / predictedDistance, dy / predictedDistance
+		}
+
+		// Can't intercept in time t, need more time
+		// Estimate new time based on distance and acceleration capability
+		// If we accelerate at max rate towards target, how long to close distance?
+		// Use kinematic equation: d = v0*t + 0.5*a*t^2
+		// Solve for t: t = (-v0 + sqrt(v0^2 + 2*a*d)) / a
+		// Simplified: estimate based on average velocity
+		avgSpeed := rocketSpeed + 0.5*rocketAcceleration*t
+		newT := predictedDistance / math.Max(avgSpeed+relativeSpeed, 1.0)
+
+		if math.Abs(newT-t) < 0.001 || newT > 100.0 {
+			// Converged or timeout, use current estimate
+			if deltaV > 0.01 {
+				return deltaVX / deltaV, deltaVY / deltaV
+			}
+			return dx / predictedDistance, dy / predictedDistance
+		}
+
+		t = newT
+	}
+
+	// Fallback: use proportional navigation
+	// Lead the target based on relative velocity
+	// Calculate line-of-sight rate
+	losRate := (relX*relVY - relY*relVX) / (distance * distance)
+
+	// Proportional navigation: accelerate perpendicular to line of sight
+	// plus some component towards target
+	// Navigation constant (higher = more aggressive)
+	N := 3.0
+
+	// Desired acceleration direction combines:
+	// 1. Direction to target (to close distance)
+	// 2. Perpendicular component (to null line-of-sight rate)
+	perpX := -relY / distance
+	perpY := relX / distance
+
+	// Combine components
+	dirX := relX/distance + N*losRate*perpX
+	dirY := relY/distance + N*losRate*perpY
+
+	// Normalize
+	dirLen := math.Sqrt(dirX*dirX + dirY*dirY)
+	if dirLen > 0.01 {
+		return dirX / dirLen, dirY / dirLen
+	}
+
+	// Final fallback: direction to target
+	return relX / distance, relY / distance
+}
