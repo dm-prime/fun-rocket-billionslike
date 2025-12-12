@@ -1,7 +1,5 @@
 package game
 
-import "math"
-
 // World manages the spatial partitioning grid and entity registration
 type World struct {
 	// Preallocated 2D grid of cells
@@ -120,39 +118,27 @@ func (w *World) UpdateEntityCell(entity *Entity) {
 	}
 }
 
-// GetCellsForEntity returns all cells that an entity overlaps with (including adjacent cells)
+// GetCellsForEntity returns all adjacent cells (3x3 grid) for collision checking
+// We always return the full 3x3 grid because entities are only stored in their center cell,
+// but we need to check adjacent cells to catch collisions with entities near cell boundaries.
 func (w *World) GetCellsForEntity(entity *Entity) []*Cell {
 	cells := make([]*Cell, 0, 9) // Max 9 cells (3x3 grid)
 
 	// Get center cell
 	centerX, centerY := w.WorldToCell(entity.X, entity.Y)
 
-	// Check center cell and all adjacent cells (3x3 grid)
+	// Always check center cell and all adjacent cells (3x3 grid)
+	// This is necessary because entities are only stored in their center cell,
+	// so a small entity near a cell boundary needs to check adjacent cells
+	// to find entities whose center is in those cells but could still collide.
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
 			cellX := centerX + dx
 			cellY := centerY + dy
 
-			// Check if entity overlaps with this cell
-			cellMinX := float64(cellX) * w.Config.CellSize
-			cellMinY := float64(cellY) * w.Config.CellSize
-			cellMaxX := cellMinX + w.Config.CellSize
-			cellMaxY := cellMinY + w.Config.CellSize
-
-			// Check if entity circle overlaps with cell rectangle
-			// Use squared distance to avoid sqrt
-			closestX := math.Max(cellMinX, math.Min(entity.X, cellMaxX))
-			closestY := math.Max(cellMinY, math.Min(entity.Y, cellMaxY))
-			dx := entity.X - closestX
-			dy := entity.Y - closestY
-			distanceSq := dx*dx + dy*dy
-			radiusSq := entity.Radius * entity.Radius
-
-			if distanceSq <= radiusSq {
-				cell := w.GetCell(cellX, cellY)
-				if cell != nil {
-					cells = append(cells, cell)
-				}
+			cell := w.GetCell(cellX, cellY)
+			if cell != nil {
+				cells = append(cells, cell)
 			}
 		}
 	}

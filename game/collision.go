@@ -74,7 +74,7 @@ func (c *CollisionSystem) CheckCollisions() {
 				}
 			}
 		}
-		
+
 		// Mark this entity as processed
 		processed[entity] = true
 	}
@@ -98,8 +98,7 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
 			// Different factions - homing suicide explodes
 			e2.Health -= 50.0 // Damage target
-			e1.Active = false // Destroy homing enemy
-			e1.Health = 0
+			e1.Health = 0     // Destroy homing enemy (don't set Active=false, let update loop handle cleanup)
 			return
 		}
 		// Same faction - skip collision if NoCollision is set
@@ -111,8 +110,7 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
 			// Different factions - homing suicide explodes
 			e1.Health -= 50.0 // Damage target
-			e2.Active = false // Destroy homing enemy
-			e2.Health = 0
+			e2.Health = 0     // Destroy homing enemy (don't set Active=false, let update loop handle cleanup)
 			return
 		}
 		// Same faction - skip collision if NoCollision is set
@@ -182,15 +180,17 @@ func (c *CollisionSystem) HandleProjectileCollision(projectile, target *Entity) 
 			// Create destroyed indicator in yellow (bullet color)
 			if c.game != nil {
 				c.game.createDestroyedIndicatorYellow(target.X, target.Y)
-				// Spawn XP entity at enemy position, attracted to the player
-				// Pass the enemy to get its score value
-				c.game.spawnXPFromEnemy(target, projectile.Owner)
+				// Don't spawn XP from rockets (homing suicide enemies)
+				if target.ShipType != ShipTypeHomingSuicide {
+					// Spawn XP entity at enemy position, attracted to the player
+					// Pass the enemy to get its score value
+					c.game.spawnXPFromEnemy(target, projectile.Owner)
+				}
 			}
 		}
 	}
 
-	// Deactivate projectile
-	projectile.Active = false
+	// Mark projectile for removal (don't set Active=false, let update loop handle cleanup)
 	projectile.Health = 0
 }
 
@@ -201,20 +201,19 @@ func (c *CollisionSystem) HandleXPCollision(xp, player *Entity) {
 		// Use higher pickup range (check distance instead of collision)
 		pickupRange := 30.0 // Higher pickup range
 		distance := xp.DistanceTo(player)
-		
+
 		if distance <= pickupRange {
 			// Award score (stored in XP's MaxHealth)
 			scoreValue := int(xp.MaxHealth)
 			if scoreValue == 0 {
 				scoreValue = 10 // Default score if not set
 			}
-			
+
 			if c.game != nil {
 				c.game.score += scoreValue
 			}
-			
-			// Remove XP
-			xp.Active = false
+
+			// Mark XP for removal (don't set Active=false, let update loop handle cleanup)
 			xp.Health = 0
 		}
 	}

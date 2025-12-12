@@ -591,6 +591,11 @@ func (g *Game) spawnXPFromEnemy(enemy *Entity, target *Entity) {
 	shipConfig := GetShipTypeConfig(enemy.ShipType)
 	scoreValue := float64(shipConfig.Score)
 
+	// Don't spawn XP if score value is zero
+	if scoreValue <= 0 {
+		return
+	}
+
 	xp := NewEntity(enemy.X, enemy.Y, 2.0, EntityTypeXP, nil) // Smaller radius: 2.0 instead of 4.0
 	xp.Owner = target                                         // Store target in Owner field
 	xp.Active = true
@@ -704,8 +709,7 @@ func (g *Game) Update() error {
 			if entity.ShipType == ShipTypeHomingSuicide {
 				// Create destroyed indicator at missile position
 				g.createDestroyedIndicator(entity.X, entity.Y, entity.Faction)
-				entity.Active = false
-				entity.Health = 0
+				entity.Health = 0 // Mark for removal (don't set Active=false, let update loop handle cleanup)
 			}
 		}
 
@@ -772,8 +776,7 @@ func (g *Game) Update() error {
 					}
 					g.score += scoreValue
 
-					// Remove XP
-					entity.Active = false
+					// Mark XP for removal (don't set Active=false, let update loop handle cleanup)
 					entity.Health = 0
 				}
 			}

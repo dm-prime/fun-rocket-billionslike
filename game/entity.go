@@ -186,18 +186,18 @@ func (e *Entity) Update(deltaTime float64) {
 			dx := e.Owner.X - e.X
 			dy := e.Owner.Y - e.Y
 			distance := math.Sqrt(dx*dx + dy*dy)
-			
+
 			if distance > 0 {
 				// Normalize direction
 				dx /= distance
 				dy /= distance
-				
+
 				// XP speed (faster when closer for better feel)
-				xpSpeed := 200.0
+				xpSpeed := 300.0
 				if distance < 50.0 {
-					xpSpeed = 400.0 // Speed up when close
+					xpSpeed = 600.0 // Speed up when close
 				}
-				
+
 				// Set velocity toward target
 				e.VX = dx * xpSpeed
 				e.VY = dy * xpSpeed
@@ -235,8 +235,8 @@ func (e *Entity) Reset() {
 	e.Active = false
 	e.CellX = 0
 	e.CellY = 0
-		e.Age = 0.0
-		e.Faction = FactionEnemy // Reset to default
-		e.NoCollision = false
-		e.Lifetime = 0.0
+	e.Age = 0.0
+	e.Faction = FactionEnemy // Reset to default
+	e.NoCollision = false
+	e.Lifetime = 0.0
 }
