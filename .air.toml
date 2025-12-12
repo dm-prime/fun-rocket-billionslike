@@ -1,0 +1,17 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Clean up build directory before building
+  pre_cmd = ["rm -r -Force tmp -ErrorAction SilentlyContinue"]
+  cmd = "go build -o ./tmp/main.exe ."
+  bin = "tmp/main.exe"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor"]
+  delay = 1000
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true
