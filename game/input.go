@@ -28,14 +28,14 @@ type PlayerInput struct {
 	keys []ebiten.Key
 
 	// Target acquisition AI (per turret)
-	TurretTargets map[int]TurretTarget // Target info per turret index
+	TurretTargets  map[int]TurretTarget // Target info per turret index
 	MaxTargetRange float64              // Maximum range to acquire targets
 
 	// Turret rotations (per turret index)
 	TurretRotations map[int]float64 // Current rotation of each turret
 
-	// Weapon cooldowns (tracked per weapon type)
-	WeaponCooldowns map[WeaponType]float64 // Time since last shot per weapon type
+	// Weapon cooldowns (tracked per turret index to allow independent firing)
+	TurretCooldowns map[int]float64 // Time since last shot per turret index
 }
 
 // TurretTarget contains target information for a single turret
@@ -51,7 +51,7 @@ func NewPlayerInput() *PlayerInput {
 		MaxTargetRange:  1000.0, // 1000 pixels max range
 		TurretTargets:   make(map[int]TurretTarget),
 		TurretRotations: make(map[int]float64),
-		WeaponCooldowns: make(map[WeaponType]float64),
+		TurretCooldowns: make(map[int]float64),
 	}
 }
 
@@ -118,12 +118,12 @@ func (p *PlayerInput) GetTurretRotation(turretIndex int) float64 {
 	return 0.0
 }
 
-// ResetWeaponCooldown resets cooldown for a specific weapon type
-func (p *PlayerInput) ResetWeaponCooldown(weaponType WeaponType) {
-	if p.WeaponCooldowns == nil {
-		p.WeaponCooldowns = make(map[WeaponType]float64)
+// ResetTurretCooldown resets cooldown for a specific turret index
+func (p *PlayerInput) ResetTurretCooldown(turretIndex int) {
+	if p.TurretCooldowns == nil {
+		p.TurretCooldowns = make(map[int]float64)
 	}
-	p.WeaponCooldowns[weaponType] = 0.0
+	p.TurretCooldowns[turretIndex] = 0.0
 }
 
 // ShouldRespawn returns true if R key is pressed
@@ -136,10 +136,10 @@ func (p *PlayerInput) Update(deltaTime float64) {
 	// Update pressed keys
 	p.keys = inpututil.AppendPressedKeys(p.keys[:0])
 
-	// Update weapon cooldowns
-	if p.WeaponCooldowns != nil {
-		for weaponType := range p.WeaponCooldowns {
-			p.WeaponCooldowns[weaponType] += deltaTime
+	// Update turret cooldowns
+	if p.TurretCooldowns != nil {
+		for turretIndex := range p.TurretCooldowns {
+			p.TurretCooldowns[turretIndex] += deltaTime
 		}
 	}
 }

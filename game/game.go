@@ -412,16 +412,18 @@ func (g *Game) spawnProjectile(entity *Entity) {
 			continue
 		}
 
-		// Check weapon cooldown
+		// Check weapon cooldown (per turret for player, per weapon type for AI)
 		weaponConfig := GetWeaponConfig(mount.WeaponType)
 		var timeSinceLastShot float64
 		var hasBeenFired bool
 
 		if playerInput, ok := entity.Input.(*PlayerInput); ok {
-			if playerInput.WeaponCooldowns != nil {
-				timeSinceLastShot, hasBeenFired = playerInput.WeaponCooldowns[mount.WeaponType]
+			// Track cooldowns per turret index for independent firing
+			if playerInput.TurretCooldowns != nil {
+				timeSinceLastShot, hasBeenFired = playerInput.TurretCooldowns[i]
 			}
 		} else if aiInput, ok := entity.Input.(*AIInput); ok {
+			// AI still uses per-weapon-type cooldowns
 			if aiInput.WeaponCooldowns != nil {
 				timeSinceLastShot, hasBeenFired = aiInput.WeaponCooldowns[mount.WeaponType]
 			}
@@ -447,11 +449,11 @@ func (g *Game) spawnProjectile(entity *Entity) {
 			if shootRotation == 0.0 {
 				shootRotation = entity.Rotation + mount.Angle
 			}
-			// Reset weapon cooldown after firing
-			playerInput.ResetWeaponCooldown(mount.WeaponType)
+			// Reset turret cooldown after firing (per turret index)
+			playerInput.ResetTurretCooldown(i)
 		} else if aiInput, ok := entity.Input.(*AIInput); ok {
 			shootRotation = entity.Rotation + mount.Angle
-			// Reset weapon cooldown after firing
+			// Reset weapon cooldown after firing (per weapon type for AI)
 			aiInput.ResetWeaponCooldown(mount.WeaponType)
 		} else {
 			shootRotation = entity.Rotation + mount.Angle
@@ -750,14 +752,7 @@ func (g *Game) Update() error {
 			g.world.UnregisterEntity(entity)
 		}
 
-		// Remove projectiles that are out of bounds
-		if entity.Type == EntityTypeProjectile {
-			if entity.X < 0 || entity.X > g.config.WorldWidth ||
-				entity.Y < 0 || entity.Y > g.config.WorldHeight {
-				entity.Active = false
-				g.world.UnregisterEntity(entity)
-			}
-		}
+		// Projectiles can exist outside world bounds - no removal check needed
 	}
 
 	// Check collisions
