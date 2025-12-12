@@ -542,6 +542,21 @@ func (g *Game) createDestroyedIndicator(x, y float64, faction Faction) {
 	g.world.RegisterEntity(indicator)
 }
 
+// createDestroyedIndicatorYellow creates a visual indicator in yellow color
+// for enemies destroyed by player projectiles
+// Uses Owner == nil and a special Radius value as a marker for yellow color
+func (g *Game) createDestroyedIndicatorYellow(x, y float64) {
+	indicator := NewEntity(x, y, -8.0, EntityTypeDestroyedIndicator, nil) // Negative radius marks as yellow
+	indicator.Faction = FactionPlayer
+	indicator.Active = true
+	indicator.Health = 1.0 // Small health value so it renders
+	indicator.MaxHealth = 1.0
+	indicator.Lifetime = 1.0 // Show for 1 second
+	indicator.Age = 0.0
+	indicator.NoCollision = true // Don't collide with anything
+	g.world.RegisterEntity(indicator)
+}
+
 
 // Update updates the game state
 func (g *Game) Update() error {

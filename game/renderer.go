@@ -317,9 +317,16 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 		return
 	}
 
-	// Get faction color
-	factionConfig := GetFactionConfig(entity.Faction)
-	baseColor := factionConfig.Color
+	// Determine color - yellow for bullet kills, faction color for missile timeouts
+	var baseColor color.RGBA
+	if entity.Radius < 0 {
+		// Negative radius marks this as a yellow indicator (bullet kill)
+		baseColor = color.RGBA{255, 255, 0, 255} // Yellow
+	} else {
+		// Use faction color (missile timeout)
+		factionConfig := GetFactionConfig(entity.Faction)
+		baseColor = factionConfig.Color
+	}
 
 	// Calculate fade based on lifetime (fade from opaque to transparent)
 	var alpha uint8 = 255
@@ -340,7 +347,8 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 	}
 
 	// Draw indicator as an X shape (cross)
-	radius := entity.Radius * r.camera.Zoom
+	// Use absolute value of radius (negative radius is just a marker for yellow)
+	radius := math.Abs(entity.Radius) * r.camera.Zoom
 	if radius < 3 {
 		radius = 3
 	}
