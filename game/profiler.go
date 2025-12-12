@@ -26,7 +26,8 @@ type Profiler struct {
 	cpuProfileStartTime time.Time
 }
 
-// NewProfiler creates a new profiler instance and starts continuous CPU profiling
+// NewProfiler creates a new profiler instance
+// Continuous CPU profiling is disabled by default to avoid performance overhead
 func NewProfiler() *Profiler {
 	profilesDir := "profiles"
 	os.MkdirAll(profilesDir, 0755)
@@ -38,8 +39,9 @@ func NewProfiler() *Profiler {
 		cpuProfileActive: false,
 	}
 	
-	// Start continuous CPU profiling
-	p.StartContinuousCPUProfile()
+	// Disabled continuous CPU profiling to reduce overhead
+	// Uncomment the line below to enable profiling:
+	// p.StartContinuousCPUProfile()
 	
 	return p
 }

@@ -35,8 +35,10 @@ func (c *CollisionSystem) CheckCollisions() {
 		cells := c.world.GetCellsForEntity(entity)
 
 		// Check collisions with entities in these cells
+		// Optimize: iterate directly over cell entities to avoid GetActiveEntities allocation
 		for _, cell := range cells {
-			for _, other := range cell.GetActiveEntities() {
+			for i := 0; i < cell.Count; i++ {
+				other := cell.Entities[i]
 				// Skip self, inactive, or dead entities
 				if other == entity || !other.Active || other.Health <= 0 {
 					continue

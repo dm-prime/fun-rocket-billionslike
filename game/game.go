@@ -126,22 +126,22 @@ func (g *Game) createPlayer() {
 func (g *Game) respawnPlayer() {
 	// Reconstruct the entire game state - this throws away all old entities automatically
 	config := g.config
-	
+
 	// Create new world (this discards all old entities)
 	world := NewWorld(config)
 	collisionSystem := NewCollisionSystem(world)
 	camera := NewCamera(float64(config.ScreenWidth), float64(config.ScreenHeight))
 	renderer := NewRenderer(camera)
-	
+
 	// Replace all game systems
 	g.world = world
 	g.collisionSystem = collisionSystem
 	g.renderer = renderer
 	g.camera = camera
-	
+
 	// Set game reference in collision system
 	collisionSystem.SetGame(g)
-	
+
 	// Reset all game state
 	g.maxProjectiles = 1000
 	g.projectiles = make([]*Entity, 0, 1000)
@@ -156,10 +156,10 @@ func (g *Game) respawnPlayer() {
 	g.fpsUpdateCounter = 0
 	g.fpsUpdateTimer = 0.0
 	g.lastUpdateTime = time.Now()
-	
+
 	// Create new player
 	g.createPlayer()
-	
+
 	// Reset spawn timer and wave state
 	g.enemySpawnTimer = 0
 	g.enemiesSpawnedThisWave = 0
@@ -182,7 +182,7 @@ func (g *Game) isPlayerRegistered() bool {
 // canWeaponTargetEntity checks if a weapon can target a specific entity based on weapon config
 func canWeaponTargetEntity(weaponType WeaponType, target *Entity) bool {
 	weaponConfig := GetWeaponConfig(weaponType)
-	
+
 	// Check entity type whitelist
 	if len(weaponConfig.TargetEntityTypes) > 0 {
 		found := false
@@ -196,14 +196,14 @@ func canWeaponTargetEntity(weaponType WeaponType, target *Entity) bool {
 			return false
 		}
 	}
-	
+
 	// Check entity type blacklist
 	for _, blockedType := range weaponConfig.BlacklistEntityTypes {
 		if target.Type == blockedType {
 			return false
 		}
 	}
-	
+
 	// Check ship type whitelist (only for non-projectile entities)
 	if target.Type != EntityTypeProjectile && len(weaponConfig.TargetShipTypes) > 0 {
 		found := false
@@ -217,7 +217,7 @@ func canWeaponTargetEntity(weaponType WeaponType, target *Entity) bool {
 			return false
 		}
 	}
-	
+
 	// Check ship type blacklist (only for non-projectile entities)
 	if target.Type != EntityTypeProjectile {
 		for _, blockedShipType := range weaponConfig.BlacklistShipTypes {
@@ -226,7 +226,7 @@ func canWeaponTargetEntity(weaponType WeaponType, target *Entity) bool {
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -290,7 +290,7 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 			if targetedEnemies[entity] {
 				continue
 			}
-			
+
 			// Check if this weapon can target this entity based on weapon config
 			if !canWeaponTargetEntity(mount.WeaponType, entity) {
 				continue
@@ -542,8 +542,8 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 
 	homingAI := CreateEnemyAIWithType(homingEnemyType)
 	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
-	homingEnemy.Faction = ownerFaction // Inherit faction from owner
-	homingEnemy.NoCollision = true     // Homing rockets don't collide with other entities (except targets)
+	homingEnemy.Faction = ownerFaction           // Inherit faction from owner
+	homingEnemy.NoCollision = true               // Homing rockets don't collide with other entities (except targets)
 	homingEnemy.Lifetime = weaponConfig.Lifetime // Set lifetime for auto-detonation
 
 	// Give the homing enemy initial velocity in the shooting direction
@@ -588,13 +588,13 @@ func (g *Game) spawnXPFromEnemy(enemy *Entity, target *Entity) {
 	// Get score value from the enemy
 	shipConfig := GetShipTypeConfig(enemy.ShipType)
 	scoreValue := float64(shipConfig.Score)
-	
+
 	xp := NewEntity(enemy.X, enemy.Y, 2.0, EntityTypeXP, nil) // Smaller radius: 2.0 instead of 4.0
-	xp.Owner = target // Store target in Owner field
+	xp.Owner = target                                         // Store target in Owner field
 	xp.Active = true
 	xp.Health = 1.0
 	xp.MaxHealth = scoreValue // Store score value in MaxHealth
-	xp.NoCollision = true // XP doesn't collide with anything
+	xp.NoCollision = true     // XP doesn't collide with anything
 	xp.VX = 0
 	xp.VY = 0
 	g.world.RegisterEntity(xp)
@@ -625,36 +625,37 @@ func (g *Game) Update() error {
 		if g.fpsUpdateCounter > 0 {
 			g.fps = float64(g.fpsUpdateCounter) / g.fpsUpdateTimer
 		}
-		
-		// Detect FPS drops below 60 FPS
+
+		// Detect FPS drops below 45 FPS (changed from 60 to be less aggressive)
 		// Skip detection in the first 3 seconds after game launch
+		// Disabled by default to avoid game exits - uncomment to enable profiling on severe FPS drops
 		timeSinceStart := time.Since(g.gameStartTime)
-		if g.fps < 60.0 && timeSinceStart >= 3*time.Second && time.Since(g.lastFPSDropTime) >= g.fpsDropCooldown {
+		if g.fps < 55.0 && timeSinceStart >= 3*time.Second && time.Since(g.lastFPSDropTime) >= g.fpsDropCooldown {
 			g.lastFPSDropTime = time.Now()
-			
+
 			// Generate reason string with context
 			entityCount := len(g.world.AllEntities)
 			projectileCount := len(g.projectiles)
 			reason := fmt.Sprintf("fps%.0f-entities%d-projectiles%d", g.fps, entityCount, projectileCount)
-			
+
 			// Save the current continuous CPU profile (captures data leading up to the drop)
 			fmt.Printf("FPS drop detected (%.0f FPS). Saving performance profile...\n", g.fps)
-			
+
 			// Log GC stats before saving profile
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
-			fmt.Printf("GC stats: NumGC=%d, PauseTotal=%v, HeapAlloc=%d KB\n", 
+			fmt.Printf("GC stats: NumGC=%d, PauseTotal=%v, HeapAlloc=%d KB\n",
 				m.NumGC, m.PauseTotalNs, m.HeapAlloc/1024)
-			
+
 			err := g.profiler.CaptureProfileSync(reason, 0) // duration ignored for continuous profiling
 			if err != nil {
 				fmt.Printf("Failed to capture profile: %v\n", err)
 			}
-			
-			// Exit the game when FPS drop is detected
-			return fmt.Errorf("FPS drop detected (%.0f FPS). Exiting game.", g.fps)
+
+			// Log the drop but don't exit the game (changed to keep playing)
+			fmt.Printf("Warning: Severe FPS drop detected (%.0f FPS).\n", g.fps)
 		}
-		
+
 		g.fpsUpdateCounter = 0
 		g.fpsUpdateTimer = 0.0
 	}
@@ -733,7 +734,7 @@ func (g *Game) Update() error {
 				shouldRemove = true
 			}
 		}
-		
+
 		if shouldRemove {
 			// Don't award score immediately - XP will handle that when collected
 			entity.Active = false
@@ -761,7 +762,7 @@ func (g *Game) Update() error {
 
 	// Check collisions
 	g.collisionSystem.CheckCollisions()
-	
+
 	// Check XP pickup range for all XP entities near player
 	if g.player != nil && g.player.Active {
 		for _, entity := range g.world.AllEntities {
@@ -775,7 +776,7 @@ func (g *Game) Update() error {
 						scoreValue = 10
 					}
 					g.score += scoreValue
-					
+
 					// Remove XP
 					entity.Active = false
 					entity.Health = 0

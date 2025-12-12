@@ -175,7 +175,12 @@ func (w *World) GetEntitiesInRadius(x, y, radius float64) []*Entity {
 				continue
 			}
 
-			for _, entity := range cell.GetActiveEntities() {
+			// Optimize: iterate directly over cell entities to avoid GetActiveEntities allocation
+			for i := 0; i < cell.Count; i++ {
+				entity := cell.Entities[i]
+				if !entity.Active {
+					continue
+				}
 				dx := entity.X - x
 				dy := entity.Y - y
 				distanceSq := dx*dx + dy*dy

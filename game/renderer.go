@@ -99,21 +99,45 @@ func (c *Camera) GetVisibleCells(world *World) []*Cell {
 
 // Renderer handles rendering of game entities
 type Renderer struct {
-	camera     *Camera
-	faceSource *text.GoTextFaceSource
+	camera            *Camera
+	faceSource        *text.GoTextFaceSource
+	fpsTextUpdateCounter int
+	cachedFPSText     string
+	
+	// Draw call counters for performance analysis
+	drawCallCount     int
+	entityRenderCount int
+	projectileRenderCount int
+	aimLineCount      int
+	healthBarCount    int
+	turretCount       int
+	circleCount       int
+	lineCount         int
 }
 
 // NewRenderer creates a new renderer
 func NewRenderer(camera *Camera) *Renderer {
 	faceSource, _ := text.NewGoTextFaceSource(bytes.NewReader(goregular.TTF))
 	return &Renderer{
-		camera:     camera,
-		faceSource: faceSource,
+		camera:            camera,
+		faceSource:        faceSource,
+		fpsTextUpdateCounter: 0,
+		cachedFPSText:     "FPS: 60",
 	}
 }
 
 // Render renders all visible entities
 func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, score int, fps float64) {
+	// Reset draw call counters
+	r.drawCallCount = 0
+	r.entityRenderCount = 0
+	r.projectileRenderCount = 0
+	r.aimLineCount = 0
+	r.healthBarCount = 0
+	r.turretCount = 0
+	r.circleCount = 0
+	r.lineCount = 0
+	
 	// Render cell grid on background (if debug flag is enabled)
 	debugState := GetDebugState()
 	if debugState.ShowGrid {
@@ -123,13 +147,55 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
-	// Render entities in visible cells
+	// Count entities for performance optimizations
+	entityCount := 0
 	for _, cell := range visibleCells {
-		for _, entity := range cell.GetActiveEntities() {
-			if entity.Health <= 0 {
+		entityCount += cell.Count
+	}
+	
+	// Limit destroyed indicator rendering when there are many entities (performance optimization)
+	maxDestroyedIndicators := 10 // Reduced from 20 to 10
+	destroyedIndicatorCount := 0
+
+	// Render entities in visible cells
+	// Optimize: iterate directly over cell entities to avoid GetActiveEntities allocation
+	// Separate rendering order: projectiles first (simpler, faster), then other entities
+	for _, cell := range visibleCells {
+		// First pass: render projectiles (simpler shapes, no aim lines, no health bars)
+		for i := 0; i < cell.Count; i++ {
+			entity := cell.Entities[i]
+			if !entity.Active || entity.Health <= 0 {
+				continue
+			}
+			if entity.Type == EntityTypeProjectile {
+				r.projectileRenderCount++
+				r.renderEntityWithAim(screen, entity, player, false)
+			}
+		}
+	}
+	
+	// Second pass: render non-projectile entities
+	for _, cell := range visibleCells {
+		for i := 0; i < cell.Count; i++ {
+			entity := cell.Entities[i]
+			if !entity.Active || entity.Health <= 0 {
 				continue
 			}
 			
+			// Skip projectiles (already rendered)
+			if entity.Type == EntityTypeProjectile {
+				continue
+			}
+			
+			// Skip destroyed indicators if we've hit the limit
+			if entity.Type == EntityTypeDestroyedIndicator {
+				if destroyedIndicatorCount >= maxDestroyedIndicators {
+					continue
+				}
+				destroyedIndicatorCount++
+			}
+			
+			r.entityRenderCount++
 			// Only draw aim lines for the player (major performance optimization)
 			drawAimLines := (entity == player && entity != nil)
 			r.renderEntityWithAim(screen, entity, player, drawAimLines)
@@ -138,6 +204,11 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 
 	// Render UI (score, FPS, and restart message)
 	r.RenderUI(screen, player, score, fps)
+	
+	// Print draw call statistics (disabled for performance - this is VERY expensive)
+	// Only uncomment for debugging
+	// fmt.Printf("Draw calls: Total=%d, Entities=%d, Projectiles=%d, Circles=%d, Lines=%d, AimLines=%d, HealthBars=%d, Turrets=%d\n",
+	//	r.drawCallCount, r.entityRenderCount, r.projectileRenderCount, r.circleCount, r.lineCount, r.aimLineCount, r.healthBarCount, r.turretCount)
 }
 
 // RenderEntity renders a single entity
@@ -173,8 +244,16 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 	radius := entity.Radius * r.camera.Zoom
 	
 	// Skip rendering very small entities when zoomed out (performance optimization)
-	if radius < 0.5 {
-		return // Too small to see, skip rendering
+	// For projectiles, be more aggressive - skip if radius < 2.0 to reduce draw calls
+	if entity.Type == EntityTypeProjectile {
+		if radius < 2.0 {
+			return // Too small to see, skip rendering
+		}
+	} else {
+		// For other entities, skip if radius < 1.0
+		if radius < 1.0 {
+			return // Too small to see, skip rendering
+		}
 	}
 
 	// Determine color based on ship type
@@ -209,21 +288,35 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 	}
 
 	// Draw entity based on shape
-	switch shipConfig.Shape {
-	case ShipShapeCircle:
+	// For small entities (radius < 3), always use circles to reduce draw calls
+	if radius < 3.0 {
+		r.circleCount++
+		r.drawCallCount++
 		vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
-	case ShipShapeTriangle:
-		r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, entity.ShipType)
-	case ShipShapeSquare:
-		r.drawSquare(screen, sx, sy, radius, entity.Rotation, clr)
-	case ShipShapeDiamond:
-		r.drawDiamond(screen, sx, sy, radius, entity.Rotation, clr)
-	default:
-		vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+	} else {
+		switch shipConfig.Shape {
+		case ShipShapeCircle:
+			r.circleCount++
+			r.drawCallCount++
+			vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+		case ShipShapeTriangle:
+			r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, entity.ShipType)
+		case ShipShapeSquare:
+			r.drawSquare(screen, sx, sy, radius, entity.Rotation, clr)
+		case ShipShapeDiamond:
+			r.drawDiamond(screen, sx, sy, radius, entity.Rotation, clr)
+		default:
+			r.circleCount++
+			r.drawCallCount++
+			vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+		}
 	}
 
-	// Draw direction indicator (small line)
-	if entity.Type != EntityTypeProjectile {
+	// Draw direction indicator (small line) - only for player to save draw calls
+	// Skip for projectiles (they're too small and numerous)
+	if entity.Type != EntityTypeProjectile && entity == player && radius >= 3.0 {
+		r.lineCount++
+		r.drawCallCount++
 		dirLength := radius * 1.5
 		endX := sx + math.Cos(entity.Rotation)*dirLength
 		endY := sy + math.Sin(entity.Rotation)*dirLength
@@ -231,8 +324,10 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 	}
 
 	// Draw turret mount points (only for ships, not projectiles)
+	// Only draw turrets for player to save draw calls (performance optimization)
+	// Skip if entity is too small (performance optimization)
 	// Reuse shipConfig we already fetched above
-	if entity.Type != EntityTypeProjectile {
+	if entity.Type != EntityTypeProjectile && entity == player && radius >= 3.0 {
 		for turretIndex, mount := range shipConfig.TurretMounts {
 			// Only draw active turrets
 			if !mount.Active {
@@ -251,67 +346,86 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 			// Convert to screen coordinates
 			turretSx, turretSy := r.camera.WorldToScreen(entity.X+mountX, entity.Y+mountY)
 
-			// Draw turret as a circle and a line (barrel)
-			turretRadius := 4.0 * r.camera.Zoom
-			if turretRadius < 1.5 {
-				turretRadius = 1.5
-			}
+		// Draw turret as a circle and a line (barrel)
+		turretRadius := 4.0 * r.camera.Zoom
+		if turretRadius < 1.5 {
+			turretRadius = 1.5
+		}
 
-			// Turret color (slightly lighter than ship)
-			turretColor := color.RGBA{
-				uint8(math.Min(255, float64(clr.R)+50)),
-				uint8(math.Min(255, float64(clr.G)+50)),
-				uint8(math.Min(255, float64(clr.B)+50)),
-				255,
-			}
+		// Turret color (slightly lighter than ship)
+		turretColor := color.RGBA{
+			uint8(math.Min(255, float64(clr.R)+50)),
+			uint8(math.Min(255, float64(clr.G)+50)),
+			uint8(math.Min(255, float64(clr.B)+50)),
+			255,
+		}
 
-			// Draw turret circle (base)
-			vector.DrawFilledCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), turretColor, true)
+		r.turretCount++
+		r.circleCount++
+		r.lineCount++
+		r.drawCallCount += 3 // Circle + outline + line
+		
+		// Draw turret circle (base)
+		vector.DrawFilledCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), turretColor, true)
 
-			// Draw turret outline circle for better visibility
-			vector.StrokeCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), 1.5, turretColor, true)
+		// Draw turret outline circle for better visibility
+		vector.StrokeCircle(screen, float32(turretSx), float32(turretSy), float32(turretRadius), 1.5, turretColor, true)
 
-			// Draw turret barrel (line showing direction)
-			// For player, use per-turret rotation; for others, use ship rotation + mount angle
-			var turretRotation float64
-			if entity.Type == EntityTypePlayer {
-				if playerInput, ok := entity.Input.(*PlayerInput); ok {
-					// Use per-turret rotation if available, fallback to ship rotation + mount angle
-					turretRotation = playerInput.GetTurretRotation(turretIndex)
-					if turretRotation == 0.0 {
-						turretRotation = entity.Rotation + mount.Angle
-					}
-				} else {
+		// Draw turret barrel (line showing direction)
+		// For player, use per-turret rotation; for others, use ship rotation + mount angle
+		var turretRotation float64
+		if entity.Type == EntityTypePlayer {
+			if playerInput, ok := entity.Input.(*PlayerInput); ok {
+				// Use per-turret rotation if available, fallback to ship rotation + mount angle
+				turretRotation = playerInput.GetTurretRotation(turretIndex)
+				if turretRotation == 0.0 {
 					turretRotation = entity.Rotation + mount.Angle
 				}
 			} else {
 				turretRotation = entity.Rotation + mount.Angle
 			}
+		} else {
+			turretRotation = entity.Rotation + mount.Angle
+		}
 
-			// Barrel extends from center of turret circle
-			// Use barrel length from mount point, or default to 3x turret radius if not set
-			barrelLength := mount.BarrelLength * r.camera.Zoom
-			if barrelLength == 0 {
-				barrelLength = turretRadius * 3.0
-			}
-			barrelStartX := turretSx + math.Cos(turretRotation)*turretRadius
-			barrelStartY := turretSy + math.Sin(turretRotation)*turretRadius
-			barrelEndX := turretSx + math.Cos(turretRotation)*barrelLength
-			barrelEndY := turretSy + math.Sin(turretRotation)*barrelLength
+		// Barrel extends from center of turret circle
+		// Use barrel length from mount point, or default to 3x turret radius if not set
+		barrelLength := mount.BarrelLength * r.camera.Zoom
+		if barrelLength == 0 {
+			barrelLength = turretRadius * 3.0
+		}
+		barrelStartX := turretSx + math.Cos(turretRotation)*turretRadius
+		barrelStartY := turretSy + math.Sin(turretRotation)*turretRadius
+		barrelEndX := turretSx + math.Cos(turretRotation)*barrelLength
+		barrelEndY := turretSy + math.Sin(turretRotation)*barrelLength
 
-			// Draw barrel line (thicker for visibility)
-			vector.StrokeLine(screen, float32(barrelStartX), float32(barrelStartY),
-				float32(barrelEndX), float32(barrelEndY), 2.5, turretColor, true)
+		// Draw barrel line (thicker for visibility)
+		vector.StrokeLine(screen, float32(barrelStartX), float32(barrelStartY),
+			float32(barrelEndX), float32(barrelEndY), 2.5, turretColor, true)
 		}
 	}
 
 	// Draw aim target indicator for ships with turrets or shooting capability
+	// Only draw aim lines for player or enemies very close to player (performance optimization)
 	if entity.Type != EntityTypeProjectile {
-		r.drawAimTarget(screen, entity, player)
+		if entity == player {
+			// Always draw aim lines for player
+			r.drawAimTarget(screen, entity, player)
+		} else if player != nil && player.Active {
+			// Only draw aim lines for enemies within 200 pixels of player
+			dx := entity.X - player.X
+			dy := entity.Y - player.Y
+			distanceSq := dx*dx + dy*dy
+			if distanceSq < 200*200 {
+				r.drawAimTarget(screen, entity, player)
+			}
+		}
 	}
 
-	// Draw health bar for damaged entities
-	if entity.Health < entity.MaxHealth {
+	// Draw health bar for damaged entities (only if health is below 50% to reduce draw calls)
+	if entity.Health < entity.MaxHealth && entity.Health < entity.MaxHealth*0.5 {
+		r.healthBarCount++
+		r.drawCallCount += 2 // Background + health bar
 		barWidth := radius * 2
 		barHeight := 4.0 * r.camera.Zoom
 		barX := sx - barWidth/2
@@ -347,7 +461,8 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 	}
 	
 	// Skip rendering if indicator is too old/faded (performance optimization)
-	if entity.Lifetime > 0 && entity.Age > entity.Lifetime*0.8 {
+	// Skip earlier (at 50% lifetime) to save more draw calls
+	if entity.Lifetime > 0 && entity.Age > entity.Lifetime*0.5 {
 		// Indicator is fading out, skip rendering to save draw calls
 		return
 	}
@@ -390,6 +505,8 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 	}
 
 	// Draw X shape (two diagonal lines) with thicker lines
+	r.lineCount += 2
+	r.drawCallCount += 2
 	lineWidth := 3.0
 	// Top-left to bottom-right
 	x1 := sx - radius
@@ -418,9 +535,9 @@ func (r *Renderer) renderXP(screen *ebiten.Image, entity *Entity) {
 		return
 	}
 	
-	// Skip rendering very small XP when zoomed out
+	// Skip rendering very small XP when zoomed out (more aggressive culling)
 	radius := entity.Radius * r.camera.Zoom
-	if radius < 0.5 {
+	if radius < 1.0 {
 		return
 	}
 
@@ -431,9 +548,13 @@ func (r *Renderer) renderXP(screen *ebiten.Image, entity *Entity) {
 	if radius < 2 {
 		radius = 2
 	}
+	r.circleCount++
+	r.drawCallCount++
 	vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
 	
 	// Draw outline for better visibility
+	r.lineCount++
+	r.drawCallCount++
 	vector.StrokeCircle(screen, float32(sx), float32(sy), float32(radius), 1.5, clr, true)
 }
 
@@ -473,11 +594,12 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 					targetSx, targetSy := r.camera.WorldToScreen(targetX, targetY)
 					r.drawTransparentLine(screen, aimSx, aimSy, targetSx, targetSy, color.RGBA{255, 255, 0, 30})
 
-					targetRadius := 3.0 * r.camera.Zoom
-					if targetRadius < 1.5 {
-						targetRadius = 1.5
-					}
-					r.drawTransparentCircle(screen, targetSx, targetSy, targetRadius, color.RGBA{255, 255, 0, 30})
+					// Skip drawing target circle for performance (line is enough)
+					// targetRadius := 3.0 * r.camera.Zoom
+					// if targetRadius < 1.5 {
+					// 	targetRadius = 1.5
+					// }
+					// r.drawTransparentCircle(screen, targetSx, targetSy, targetRadius, color.RGBA{255, 255, 0, 30})
 				}
 			}
 			// Return early since we've drawn all turret aim lines
@@ -521,14 +643,17 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 		}
 
 		// Draw line from aim point to target
+		r.aimLineCount++
+		r.lineCount++
+		r.drawCallCount++
 		r.drawTransparentLine(screen, aimSx, aimSy, targetSx, targetSy, aimColor)
 
-		// Draw small circle at target position
-		targetRadius := 3.0 * r.camera.Zoom
-		if targetRadius < 1.5 {
-			targetRadius = 1.5
-		}
-		r.drawTransparentCircle(screen, targetSx, targetSy, targetRadius, aimColor)
+		// Skip drawing target circle for performance (line is enough)
+		// targetRadius := 3.0 * r.camera.Zoom
+		// if targetRadius < 1.5 {
+		// 	targetRadius = 1.5
+		// }
+		// r.drawTransparentCircle(screen, targetSx, targetSy, targetRadius, aimColor)
 	}
 }
 
@@ -563,23 +688,15 @@ func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation flo
 		{backRightX, backRightY}, // Back right
 	}
 
-	// Draw triangle outline with thicker lines
+	// Simplified triangle rendering: just outline (3 lines) for performance
+	// Skip fill lines to reduce draw calls from 7 to 3
+	r.lineCount += 3
+	r.drawCallCount += 3
 	for i := 0; i < 3; i++ {
 		next := (i + 1) % 3
 		vector.StrokeLine(screen, float32(points[i][0]), float32(points[i][1]),
 			float32(points[next][0]), float32(points[next][1]), 2, clr, true)
 	}
-
-	// Fill triangle by drawing lines from center to edges
-	centerX, centerY := x, y
-	for i := 0; i < 3; i++ {
-		vector.StrokeLine(screen, float32(centerX), float32(centerY),
-			float32(points[i][0]), float32(points[i][1]), 1, clr, true)
-	}
-
-	// Fill the back edge
-	vector.StrokeLine(screen, float32(backLeftX), float32(backLeftY),
-		float32(backRightX), float32(backRightY), 2, clr, true)
 }
 
 // drawSquare draws a square shape rotated by the entity's rotation
@@ -592,6 +709,9 @@ func (r *Renderer) drawSquare(screen *ebiten.Image, x, y, radius, rotation float
 		{x + math.Cos(rotation+3.927)*halfSize, y + math.Sin(rotation+3.927)*halfSize}, // Bottom-left (225 degrees)
 		{x + math.Cos(rotation+5.498)*halfSize, y + math.Sin(rotation+5.498)*halfSize}, // Top-left (315 degrees)
 	}
+
+	r.lineCount += 10 // 6 outline + 4 fill
+	r.drawCallCount += 10
 
 	// Draw filled square by drawing triangles
 	// Triangle 1: points 0, 1, 2
@@ -628,6 +748,9 @@ func (r *Renderer) drawDiamond(screen *ebiten.Image, x, y, radius, rotation floa
 		{x + math.Cos(rotation+4.712)*radius, y + math.Sin(rotation+4.712)*radius}, // Left point (270 degrees)
 	}
 
+	r.lineCount += 8 // 4 outline + 4 fill
+	r.drawCallCount += 8
+
 	// Draw diamond outline
 	for i := 0; i < 4; i++ {
 		next := (i + 1) % 4
@@ -649,9 +772,20 @@ func (r *Renderer) RenderUI(screen *ebiten.Image, player *Entity, score int, fps
 	scoreText := fmt.Sprintf("Score: %d", score)
 	r.drawText(screen, scoreText, 10, 30, color.RGBA{255, 255, 255, 255})
 
-	// Always show FPS
-	fpsText := fmt.Sprintf("FPS: %.0f", fps)
-	r.drawText(screen, fpsText, 10, 50, color.RGBA{200, 200, 200, 255})
+	// Show FPS less frequently to reduce text rendering overhead (update every 0.2s worth of frames)
+	// Only update FPS text every ~12 frames at 60fps (0.2 seconds)
+	r.fpsTextUpdateCounter++
+	if r.fpsTextUpdateCounter >= 12 {
+		r.fpsTextUpdateCounter = 0
+		r.cachedFPSText = fmt.Sprintf("FPS: %.0f", fps)
+	}
+	r.drawText(screen, r.cachedFPSText, 10, 50, color.RGBA{200, 200, 200, 255})
+
+	// Show player coordinates
+	if player != nil && player.Active {
+		coordText := fmt.Sprintf("Position: (%.0f, %.0f)", player.X, player.Y)
+		r.drawText(screen, coordText, 10, 70, color.RGBA{200, 200, 200, 255})
+	}
 
 	// Show restart message if player is dead
 	if player == nil || !player.Active || player.Health <= 0 {
@@ -691,56 +825,59 @@ func (r *Renderer) drawTransparentLine(screen *ebiten.Image, x1, y1, x2, y2 floa
 }
 
 // drawTransparentLineWithWidth draws a line with proper alpha transparency and custom width
+// OPTIMIZED: Uses direct vector drawing instead of creating temporary images for better performance
 func (r *Renderer) drawTransparentLineWithWidth(screen *ebiten.Image, x1, y1, x2, y2 float64, clr color.RGBA, width float64) {
-	// Calculate line bounds
-	margin := width + 2
-	minX := math.Min(x1, x2) - margin
-	maxX := math.Max(x1, x2) + margin
-	minY := math.Min(y1, y2) - margin
-	maxY := math.Max(y1, y2) + margin
-
-	imgWidth := int(maxX - minX)
-	imgHeight := int(maxY - minY)
-	if imgWidth <= 0 || imgHeight <= 0 {
+	// Skip if alpha is too low (performance optimization)
+	if clr.A < 10 {
 		return
 	}
-
-	// Create temporary image for the line
-	lineImg := ebiten.NewImage(imgWidth, imgHeight)
-
-	// Draw line on temporary image
-	lineX1 := float32(x1 - minX)
-	lineY1 := float32(y1 - minY)
-	lineX2 := float32(x2 - minX)
-	lineY2 := float32(y2 - minY)
-	vector.StrokeLine(lineImg, lineX1, lineY1, lineX2, lineY2, float32(width), clr, true)
-
-	// Draw temporary image to screen with alpha
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(minX, minY)
-	op.ColorM.Scale(1, 1, 1, float64(clr.A)/255.0)
-	screen.DrawImage(lineImg, op)
+	
+	// Use direct vector drawing - much faster than creating temporary images
+	// Note: This doesn't support per-pixel alpha blending, but is much faster
+	// For very transparent lines, we'll use a simpler approach
+	if clr.A < 128 {
+		// For semi-transparent lines, use a lighter color and thinner line
+		// This is a performance trade-off - we lose perfect alpha but gain speed
+		lightClr := color.RGBA{
+			R: uint8(float64(clr.R) * float64(clr.A) / 255.0),
+			G: uint8(float64(clr.G) * float64(clr.A) / 255.0),
+			B: uint8(float64(clr.B) * float64(clr.A) / 255.0),
+			A: 255,
+		}
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(width), lightClr, true)
+	} else {
+		// For opaque lines, draw directly
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(width), clr, true)
+	}
 }
 
 // drawTransparentCircle draws a circle outline with proper alpha transparency
+// OPTIMIZED: Uses direct vector drawing instead of creating temporary images for better performance
 func (r *Renderer) drawTransparentCircle(screen *ebiten.Image, x, y, radius float64, clr color.RGBA) {
-	// Create temporary image for the circle
-	size := int(radius*2 + 4)
-	if size <= 0 {
+	// Skip if alpha is too low (performance optimization)
+	if clr.A < 10 {
 		return
 	}
-	circleImg := ebiten.NewImage(size, size)
-
-	// Draw circle on temporary image
-	centerX := float32(radius + 2)
-	centerY := float32(radius + 2)
-	vector.StrokeCircle(circleImg, centerX, centerY, float32(radius), 1.5, clr, true)
-
-	// Draw temporary image to screen with alpha
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x-radius-2, y-radius-2)
-	op.ColorM.Scale(1, 1, 1, float64(clr.A)/255.0)
-	screen.DrawImage(circleImg, op)
+	
+	// Skip very small circles (performance optimization)
+	if radius < 1 {
+		return
+	}
+	
+	// Use direct vector drawing - much faster than creating temporary images
+	// For semi-transparent circles, use a lighter color (performance trade-off)
+	if clr.A < 128 {
+		lightClr := color.RGBA{
+			R: uint8(float64(clr.R) * float64(clr.A) / 255.0),
+			G: uint8(float64(clr.G) * float64(clr.A) / 255.0),
+			B: uint8(float64(clr.B) * float64(clr.A) / 255.0),
+			A: 255,
+		}
+		vector.StrokeCircle(screen, float32(x), float32(y), float32(radius), 1.5, lightClr, true)
+	} else {
+		// For opaque circles, draw directly
+		vector.StrokeCircle(screen, float32(x), float32(y), float32(radius), 1.5, clr, true)
+	}
 }
 
 // renderCellGrid renders the cell grid on the background
