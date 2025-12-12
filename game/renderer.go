@@ -154,6 +154,12 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		return
 	}
 
+	// Handle XP entities separately
+	if entity.Type == EntityTypeXP {
+		r.renderXP(screen, entity)
+		return
+	}
+
 	// Determine color based on ship type
 	var factionConfig = GetFactionConfig(entity.Faction)
 	var clr = factionConfig.Color
@@ -368,6 +374,32 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 	x4 := sx - radius
 	y4 := sy + radius
 	r.drawTransparentLineWithWidth(screen, x3, y3, x4, y4, clr, lineWidth)
+}
+
+// renderXP renders an XP entity
+func (r *Renderer) renderXP(screen *ebiten.Image, entity *Entity) {
+	// Convert world coordinates to screen coordinates
+	sx, sy := r.camera.WorldToScreen(entity.X, entity.Y)
+
+	// Skip if outside screen bounds (with margin)
+	margin := 100.0
+	if sx < -margin || sx > r.camera.Width+margin ||
+		sy < -margin || sy > r.camera.Height+margin {
+		return
+	}
+
+	// XP is yellow/gold colored
+	clr := color.RGBA{255, 215, 0, 255} // Gold color
+
+	// Draw XP as a small circle
+	radius := entity.Radius * r.camera.Zoom
+	if radius < 2 {
+		radius = 2
+	}
+	vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+	
+	// Draw outline for better visibility
+	vector.StrokeCircle(screen, float32(sx), float32(sy), float32(radius), 1.5, clr, true)
 }
 
 // drawAimTarget draws a line from the turret/shooting point to the target

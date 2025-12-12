@@ -259,6 +259,11 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 				continue
 			}
 
+			// Skip untargetable entities (XP, destroyed indicators, etc.)
+			if entity.Type == EntityTypeXP || entity.Type == EntityTypeDestroyedIndicator {
+				continue
+			}
+
 			// Only target entities of opposite faction
 			entityFaction := GetEntityFaction(entity)
 			if entityFaction == playerFaction {
@@ -557,6 +562,22 @@ func (g *Game) createDestroyedIndicatorYellow(x, y float64) {
 	g.world.RegisterEntity(indicator)
 }
 
+// spawnXPFromEnemy creates an XP entity from a killed enemy
+func (g *Game) spawnXPFromEnemy(enemy *Entity, target *Entity) {
+	// Get score value from the enemy
+	shipConfig := GetShipTypeConfig(enemy.ShipType)
+	scoreValue := float64(shipConfig.Score)
+	
+	xp := NewEntity(enemy.X, enemy.Y, 2.0, EntityTypeXP, nil) // Smaller radius: 2.0 instead of 4.0
+	xp.Owner = target // Store target in Owner field
+	xp.Active = true
+	xp.Health = 1.0
+	xp.MaxHealth = scoreValue // Store score value in MaxHealth
+	xp.NoCollision = true // XP doesn't collide with enemies, only player
+	xp.VX = 0
+	xp.VY = 0
+	g.world.RegisterEntity(xp)
+}
 
 // Update updates the game state
 func (g *Game) Update() error {
@@ -664,16 +685,9 @@ func (g *Game) Update() error {
 		// Update entity cell membership
 		g.collisionSystem.MoveEntity(entity)
 
-		// Remove dead entities and expired destroyed indicators
+		// Remove dead entities, expired destroyed indicators, and collected XP
 		if entity.Health <= 0 || (entity.Type == EntityTypeDestroyedIndicator && entity.Lifetime > 0 && entity.Age >= entity.Lifetime) {
-			// Award score if enemy was destroyed by player
-			if entity.Type == EntityTypeEnemy {
-				// Check if this enemy was destroyed by player (via projectile or collision)
-				// We'll check this by looking at recent damage sources
-				// For now, award score for any enemy death (can be refined later)
-				shipConfig := GetShipTypeConfig(entity.ShipType)
-				g.score += shipConfig.Score
-			}
+			// Don't award score immediately - XP will handle that when collected
 			entity.Active = false
 			if entity.Type == EntityTypeProjectile {
 				// Remove projectile from list
@@ -699,6 +713,28 @@ func (g *Game) Update() error {
 
 	// Check collisions
 	g.collisionSystem.CheckCollisions()
+	
+	// Check XP pickup range for all XP entities near player
+	if g.player != nil && g.player.Active {
+		for _, entity := range g.world.AllEntities {
+			if entity.Type == EntityTypeXP && entity.Active && entity.Owner == g.player {
+				pickupRange := 30.0
+				distance := entity.DistanceTo(g.player)
+				if distance <= pickupRange {
+					// Award score
+					scoreValue := int(entity.MaxHealth)
+					if scoreValue == 0 {
+						scoreValue = 10
+					}
+					g.score += scoreValue
+					
+					// Remove XP
+					entity.Active = false
+					entity.Health = 0
+				}
+			}
+		}
+	}
 
 	// Update camera to follow player
 	if g.player != nil && g.player.Active {

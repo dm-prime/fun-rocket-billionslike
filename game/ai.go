@@ -40,6 +40,11 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, de
 			continue
 		}
 		
+		// Skip untargetable entities (XP, destroyed indicators, etc.)
+		if candidate.Type == EntityTypeXP || candidate.Type == EntityTypeDestroyedIndicator {
+			continue
+		}
+		
 		candidateFaction := GetEntityFaction(candidate)
 		if candidateFaction == targetFaction {
 			dx := candidate.X - entity.X

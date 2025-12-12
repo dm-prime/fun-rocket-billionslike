@@ -175,6 +175,9 @@ func (c *CollisionSystem) HandleProjectileCollision(projectile, target *Entity) 
 			// Create destroyed indicator in yellow (bullet color)
 			if c.game != nil {
 				c.game.createDestroyedIndicatorYellow(target.X, target.Y)
+				// Spawn XP entity at enemy position, attracted to the player
+				// Pass the enemy to get its score value
+				c.game.spawnXPFromEnemy(target, projectile.Owner)
 			}
 		}
 	}
@@ -182,6 +185,32 @@ func (c *CollisionSystem) HandleProjectileCollision(projectile, target *Entity) 
 	// Deactivate projectile
 	projectile.Active = false
 	projectile.Health = 0
+}
+
+// HandleXPCollision handles collision between XP and player
+func (c *CollisionSystem) HandleXPCollision(xp, player *Entity) {
+	// Only collect XP if it's targeting this player
+	if xp.Owner == player {
+		// Use higher pickup range (check distance instead of collision)
+		pickupRange := 30.0 // Higher pickup range
+		distance := xp.DistanceTo(player)
+		
+		if distance <= pickupRange {
+			// Award score (stored in XP's MaxHealth)
+			scoreValue := int(xp.MaxHealth)
+			if scoreValue == 0 {
+				scoreValue = 10 // Default score if not set
+			}
+			
+			if c.game != nil {
+				c.game.score += scoreValue
+			}
+			
+			// Remove XP
+			xp.Active = false
+			xp.Health = 0
+		}
+	}
 }
 
 // PushApart pushes two entities apart to resolve collision

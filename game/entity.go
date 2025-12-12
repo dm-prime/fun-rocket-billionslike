@@ -67,6 +67,7 @@ const (
 	EntityTypeEnemy
 	EntityTypeProjectile
 	EntityTypeDestroyedIndicator
+	EntityTypeXP
 )
 
 // NewEntity creates a new entity with the given parameters
@@ -178,6 +179,30 @@ func (e *Entity) Update(deltaTime float64) {
 	} else if e.Type == EntityTypeProjectile {
 		// Projectiles maintain their velocity without physics
 		// (they're already set when created)
+	} else if e.Type == EntityTypeXP {
+		// XP entities move toward their target (stored in Owner)
+		if e.Owner != nil && e.Owner.Active {
+			// Calculate direction to target
+			dx := e.Owner.X - e.X
+			dy := e.Owner.Y - e.Y
+			distance := math.Sqrt(dx*dx + dy*dy)
+			
+			if distance > 0 {
+				// Normalize direction
+				dx /= distance
+				dy /= distance
+				
+				// XP speed (faster when closer for better feel)
+				xpSpeed := 200.0
+				if distance < 50.0 {
+					xpSpeed = 400.0 // Speed up when close
+				}
+				
+				// Set velocity toward target
+				e.VX = dx * xpSpeed
+				e.VY = dy * xpSpeed
+			}
+		}
 	}
 
 	// Apply velocity to position
