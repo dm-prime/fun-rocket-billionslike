@@ -265,13 +265,7 @@ func (e *Entity) Update(deltaTime float64) {
 		e.VX *= shipConfig.Friction
 		e.VY *= shipConfig.Friction
 
-		// Clamp velocity to max speed
-		currentSpeed := math.Sqrt(e.VX*e.VX + e.VY*e.VY)
-		if currentSpeed > shipConfig.Speed {
-			scale := shipConfig.Speed / currentSpeed
-			e.VX *= scale
-			e.VY *= scale
-		}
+		// No speed limit for ships (as requested)
 	}
 	} else if e.Type == EntityTypeProjectile {
 		// Projectiles maintain their velocity without physics
