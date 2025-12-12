@@ -117,22 +117,13 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 	// Get visible cells
 	visibleCells := r.camera.GetVisibleCells(world)
 
-	// Count visible entities to optimize rendering
-	visibleEntityCount := 0
-	for _, cell := range visibleCells {
-		visibleEntityCount += cell.Count
-	}
-	
-	// Skip expensive aim line rendering if there are too many entities
-	drawAimLines := visibleEntityCount < 50
-
 	// Render entities in visible cells
 	for _, cell := range visibleCells {
 		for _, entity := range cell.GetActiveEntities() {
 			if entity.Health <= 0 {
 				continue
 			}
-			r.renderEntityWithAim(screen, entity, player, drawAimLines)
+			r.renderEntityWithAim(screen, entity, player, true)
 		}
 	}
 
@@ -293,8 +284,7 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 	}
 
 	// Draw aim target indicator for ships with turrets or shooting capability
-	// Skip aim lines if there are too many entities to avoid performance issues
-	if entity.Type != EntityTypeProjectile && drawAimLines {
+	if entity.Type != EntityTypeProjectile {
 		r.drawAimTarget(screen, entity, player)
 	}
 

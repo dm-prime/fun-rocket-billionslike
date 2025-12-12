@@ -3,13 +3,20 @@ package game
 // CollisionSystem handles collision detection using spatial partitioning
 type CollisionSystem struct {
 	world *World
+	game  *Game // Reference to game for creating destroyed indicators
 }
 
 // NewCollisionSystem creates a new collision system
 func NewCollisionSystem(world *World) *CollisionSystem {
 	return &CollisionSystem{
 		world: world,
+		game:  nil, // Will be set by SetGame
 	}
+}
+
+// SetGame sets the game reference for creating destroyed indicators
+func (c *CollisionSystem) SetGame(game *Game) {
+	c.game = game
 }
 
 // CheckCollisions checks for collisions between entities in the world
@@ -158,7 +165,19 @@ func (c *CollisionSystem) HandleProjectileCollision(projectile, target *Entity) 
 
 	// Apply damage
 	damage := 25.0
+	oldHealth := target.Health
 	target.Health -= damage
+
+	// Check if enemy was destroyed by player projectile
+	if target.Type == EntityTypeEnemy && oldHealth > 0 && target.Health <= 0 {
+		// Enemy was just killed - check if projectile is from player faction
+		if projectile.Owner != nil && projectile.Owner.Faction == FactionPlayer {
+			// Create destroyed indicator in yellow (bullet color)
+			if c.game != nil {
+				c.game.createDestroyedIndicatorYellow(target.X, target.Y)
+			}
+		}
+	}
 
 	// Deactivate projectile
 	projectile.Active = false

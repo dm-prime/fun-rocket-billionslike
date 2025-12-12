@@ -86,6 +86,9 @@ func NewGame(config Config) *Game {
 		lastUpdateTime:         time.Now(),
 	}
 
+	// Set game reference in collision system for creating destroyed indicators
+	collisionSystem.SetGame(game)
+
 	// Create player
 	game.createPlayer()
 
@@ -538,6 +541,7 @@ func (g *Game) createDestroyedIndicator(x, y float64, faction Faction) {
 	indicator.NoCollision = true // Don't collide with anything
 	g.world.RegisterEntity(indicator)
 }
+
 
 // Update updates the game state
 func (g *Game) Update() error {
