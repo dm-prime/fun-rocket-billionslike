@@ -66,6 +66,7 @@ const (
 	EntityTypePlayer EntityType = iota
 	EntityTypeEnemy
 	EntityTypeProjectile
+	EntityTypeDestroyedIndicator
 )
 
 // NewEntity creates a new entity with the given parameters

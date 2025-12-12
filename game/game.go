@@ -525,6 +525,20 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 	g.world.RegisterEntity(homingEnemy)
 }
 
+// createDestroyedIndicator creates a visual indicator at the specified position
+// that shows a missile was destroyed, colored by the faction
+func (g *Game) createDestroyedIndicator(x, y float64, faction Faction) {
+	indicator := NewEntity(x, y, 8.0, EntityTypeDestroyedIndicator, nil)
+	indicator.Faction = faction
+	indicator.Active = true
+	indicator.Health = 1.0 // Small health value so it renders
+	indicator.MaxHealth = 1.0
+	indicator.Lifetime = 1.0 // Show for 1 second
+	indicator.Age = 0.0
+	indicator.NoCollision = true // Don't collide with anything
+	g.world.RegisterEntity(indicator)
+}
+
 // Update updates the game state
 func (g *Game) Update() error {
 	// Calculate delta time
@@ -610,6 +624,8 @@ func (g *Game) Update() error {
 		if entity.Lifetime > 0 && entity.Age >= entity.Lifetime {
 			// Lifetime expired - detonate the missile
 			if entity.ShipType == ShipTypeHomingSuicide {
+				// Create destroyed indicator at missile position
+				g.createDestroyedIndicator(entity.X, entity.Y, entity.Faction)
 				entity.Active = false
 				entity.Health = 0
 			}
@@ -629,8 +645,8 @@ func (g *Game) Update() error {
 		// Update entity cell membership
 		g.collisionSystem.MoveEntity(entity)
 
-		// Remove dead entities
-		if entity.Health <= 0 {
+		// Remove dead entities and expired destroyed indicators
+		if entity.Health <= 0 || (entity.Type == EntityTypeDestroyedIndicator && entity.Lifetime > 0 && entity.Age >= entity.Lifetime) {
 			// Award score if enemy was destroyed by player
 			if entity.Type == EntityTypeEnemy {
 				// Check if this enemy was destroyed by player (via projectile or collision)

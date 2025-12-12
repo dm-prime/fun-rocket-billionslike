@@ -157,6 +157,12 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		return
 	}
 
+	// Handle destroyed indicators separately
+	if entity.Type == EntityTypeDestroyedIndicator {
+		r.renderDestroyedIndicator(screen, entity)
+		return
+	}
+
 	// Determine color based on ship type
 	var factionConfig = GetFactionConfig(entity.Faction)
 	var clr = factionConfig.Color
@@ -307,6 +313,63 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		healthWidth := barWidth * healthPercent
 		vector.DrawFilledRect(screen, float32(barX), float32(barY), float32(healthWidth), float32(barHeight), color.RGBA{0, 255, 0, 255}, true)
 	}
+}
+
+// renderDestroyedIndicator renders a visual indicator showing a missile was destroyed
+func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity) {
+	// Convert world coordinates to screen coordinates
+	sx, sy := r.camera.WorldToScreen(entity.X, entity.Y)
+
+	// Skip if outside screen bounds (with margin)
+	margin := 100.0
+	if sx < -margin || sx > r.camera.Width+margin ||
+		sy < -margin || sy > r.camera.Height+margin {
+		return
+	}
+
+	// Get faction color
+	factionConfig := GetFactionConfig(entity.Faction)
+	baseColor := factionConfig.Color
+
+	// Calculate fade based on lifetime (fade from opaque to transparent)
+	var alpha uint8 = 255
+	if entity.Lifetime > 0 {
+		lifePercent := 1.0 - (entity.Age / entity.Lifetime)
+		if lifePercent < 0 {
+			lifePercent = 0
+		}
+		alpha = uint8(255 * lifePercent)
+	}
+
+	// Create color with fade
+	clr := color.RGBA{
+		R: baseColor.R,
+		G: baseColor.G,
+		B: baseColor.B,
+		A: alpha,
+	}
+
+	// Draw indicator as an X shape (cross)
+	radius := entity.Radius * r.camera.Zoom
+	if radius < 3 {
+		radius = 3
+	}
+
+	// Draw X shape (two diagonal lines) with thicker lines
+	lineWidth := 3.0
+	// Top-left to bottom-right
+	x1 := sx - radius
+	y1 := sy - radius
+	x2 := sx + radius
+	y2 := sy + radius
+	r.drawTransparentLineWithWidth(screen, x1, y1, x2, y2, clr, lineWidth)
+
+	// Top-right to bottom-left
+	x3 := sx + radius
+	y3 := sy - radius
+	x4 := sx - radius
+	y4 := sy + radius
+	r.drawTransparentLineWithWidth(screen, x3, y3, x4, y4, clr, lineWidth)
 }
 
 // drawAimTarget draws a line from the turret/shooting point to the target
@@ -559,27 +622,33 @@ func (r *Renderer) measureText(str string) float64 {
 
 // drawTransparentLine draws a line with proper alpha transparency
 func (r *Renderer) drawTransparentLine(screen *ebiten.Image, x1, y1, x2, y2 float64, clr color.RGBA) {
-	// Calculate line bounds
-	minX := math.Min(x1, x2) - 2
-	maxX := math.Max(x1, x2) + 2
-	minY := math.Min(y1, y2) - 2
-	maxY := math.Max(y1, y2) + 2
+	r.drawTransparentLineWithWidth(screen, x1, y1, x2, y2, clr, 1.5)
+}
 
-	width := int(maxX - minX)
-	height := int(maxY - minY)
-	if width <= 0 || height <= 0 {
+// drawTransparentLineWithWidth draws a line with proper alpha transparency and custom width
+func (r *Renderer) drawTransparentLineWithWidth(screen *ebiten.Image, x1, y1, x2, y2 float64, clr color.RGBA, width float64) {
+	// Calculate line bounds
+	margin := width + 2
+	minX := math.Min(x1, x2) - margin
+	maxX := math.Max(x1, x2) + margin
+	minY := math.Min(y1, y2) - margin
+	maxY := math.Max(y1, y2) + margin
+
+	imgWidth := int(maxX - minX)
+	imgHeight := int(maxY - minY)
+	if imgWidth <= 0 || imgHeight <= 0 {
 		return
 	}
 
 	// Create temporary image for the line
-	lineImg := ebiten.NewImage(width, height)
+	lineImg := ebiten.NewImage(imgWidth, imgHeight)
 
 	// Draw line on temporary image
 	lineX1 := float32(x1 - minX)
 	lineY1 := float32(y1 - minY)
 	lineX2 := float32(x2 - minX)
 	lineY2 := float32(y2 - minY)
-	vector.StrokeLine(lineImg, lineX1, lineY1, lineX2, lineY2, 1.5, clr, true)
+	vector.StrokeLine(lineImg, lineX1, lineY1, lineX2, lineY2, float32(width), clr, true)
 
 	// Draw temporary image to screen with alpha
 	op := &ebiten.DrawImageOptions{}
