@@ -117,88 +117,48 @@ func (g *Game) createPlayer() {
 	g.camera.Y = g.player.Y
 }
 
-// respawnPlayer resets the entire game state
+// respawnPlayer resets the entire game state by reconstructing it
 func (g *Game) respawnPlayer() {
-	// Collect entities to remove (avoid modifying slice while iterating)
-	enemiesToRemove := make([]*Entity, 0)
-	for _, entity := range g.world.AllEntities {
-		if entity.Type == EntityTypeEnemy {
-			enemiesToRemove = append(enemiesToRemove, entity)
-		}
-	}
-
-	// Remove enemies
-	for _, entity := range enemiesToRemove {
-		entity.Active = false
-		g.world.UnregisterEntity(entity)
-	}
-
-	// Clear all projectiles
-	for _, projectile := range g.projectiles {
-		projectile.Active = false
-		g.world.UnregisterEntity(projectile)
-	}
-	g.projectiles = g.projectiles[:0] // Clear slice but keep capacity
-
-	// Reset player
-	if g.player != nil {
-		// Ensure player input is still set (reinitialize if needed)
-		if g.player.Input == nil {
-			g.player.Input = NewPlayerInput()
-		}
-
-		// Reset player position to center
-		g.player.X = g.config.WorldWidth / 2
-		g.player.Y = g.config.WorldHeight / 2
-
-		// Reset velocity
-		g.player.VX = 0
-		g.player.VY = 0
-		g.player.AngularVelocity = 0
-
-		// Reset rotation
-		g.player.Rotation = 0
-
-		// Reset turret rotations
-		if playerInput, ok := g.player.Input.(*PlayerInput); ok {
-			playerInput.TurretRotations = make(map[int]float64)
-			playerInput.TurretTargets = make(map[int]TurretTarget)
-		}
-
-		// Restore health
-		g.player.Health = g.player.MaxHealth
-
-		// Reset age
-		g.player.Age = 0.0
-
-		// Reset faction
-		g.player.Faction = FactionPlayer
-
-		// Ensure player is active
-		g.player.Active = true
-
-		// Ensure player is registered in world
-		if !g.isPlayerRegistered() {
-			g.world.RegisterEntity(g.player)
-		} else {
-			// Update cell membership
-			g.world.UpdateEntityCell(g.player)
-		}
-
-		// Center camera on player
-		g.camera.X = g.player.X
-		g.camera.Y = g.player.Y
-	}
-
-	// Reset spawn timer and wave state
-	g.enemySpawnTimer = 0
+	// Reconstruct the entire game state - this throws away all old entities automatically
+	config := g.config
+	
+	// Create new world (this discards all old entities)
+	world := NewWorld(config)
+	collisionSystem := NewCollisionSystem(world)
+	camera := NewCamera(float64(config.ScreenWidth), float64(config.ScreenHeight))
+	renderer := NewRenderer(camera)
+	
+	// Replace all game systems
+	g.world = world
+	g.collisionSystem = collisionSystem
+	g.renderer = renderer
+	g.camera = camera
+	
+	// Set game reference in collision system
+	collisionSystem.SetGame(g)
+	
+	// Reset all game state
+	g.maxProjectiles = 1000
+	g.projectiles = make([]*Entity, 0, 1000)
+	g.enemySpawnRate = 0.5
 	g.waveNumber = 1
 	g.enemiesPerWave = 10
 	g.enemiesSpawnedThisWave = 0
-	g.waveSpawnTimer = 0
-
-	// Reset score
+	g.waveSpawnTimer = 0.1
+	g.waveCooldown = 5.0
 	g.score = 0
+	g.fps = 60.0
+	g.fpsUpdateCounter = 0
+	g.fpsUpdateTimer = 0.0
+	g.lastUpdateTime = time.Now()
+	
+	// Create new player
+	g.createPlayer()
+	
+	// Reset spawn timer and wave state
+	g.enemySpawnTimer = 0
+	g.enemiesSpawnedThisWave = 0
+	g.waveSpawnTimer = 0
 }
 
 // isPlayerRegistered checks if the player is registered in the world
@@ -686,7 +646,20 @@ func (g *Game) Update() error {
 		g.collisionSystem.MoveEntity(entity)
 
 		// Remove dead entities, expired destroyed indicators, and collected XP
-		if entity.Health <= 0 || (entity.Type == EntityTypeDestroyedIndicator && entity.Lifetime > 0 && entity.Age >= entity.Lifetime) {
+		// Also remove XP if its target is inactive (player died/respawned)
+		shouldRemove := false
+		if entity.Health <= 0 {
+			shouldRemove = true
+		} else if entity.Type == EntityTypeDestroyedIndicator && entity.Lifetime > 0 && entity.Age >= entity.Lifetime {
+			shouldRemove = true
+		} else if entity.Type == EntityTypeXP {
+			// Remove XP if target is inactive or doesn't exist
+			if entity.Owner == nil || !entity.Owner.Active {
+				shouldRemove = true
+			}
+		}
+		
+		if shouldRemove {
 			// Don't award score immediately - XP will handle that when collected
 			entity.Active = false
 			if entity.Type == EntityTypeProjectile {
