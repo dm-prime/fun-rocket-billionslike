@@ -334,14 +334,15 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 		baseColor = factionConfig.Color
 	}
 
-	// Calculate fade based on lifetime (fade from opaque to transparent)
-	var alpha uint8 = 255
+	// Calculate fade based on lifetime (fade from 0.3 alpha to transparent)
+	var alpha uint8 = 77 // Start at ~0.3 alpha (77/255 ≈ 0.3)
 	if entity.Lifetime > 0 {
 		lifePercent := 1.0 - (entity.Age / entity.Lifetime)
 		if lifePercent < 0 {
 			lifePercent = 0
 		}
-		alpha = uint8(255 * lifePercent)
+		// Fade from 0.3 to 0
+		alpha = uint8(77 * lifePercent) // 77 = 255 * 0.3
 	}
 
 	// Create color with fade
