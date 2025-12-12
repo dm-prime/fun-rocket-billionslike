@@ -267,11 +267,7 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 			clr = color.RGBA{255, 255, 0, 255} // Yellow fallback if no owner
 		}
 	} else {
-		if entity.ShipType == ShipTypeHomingSuicide {
-			clr = factionConfig.Color
-		} else {
-			clr = factionConfig.Color
-		}
+		clr = factionConfig.Color
 	}
 
 	// Clamp minimum radius for rendering
@@ -279,28 +275,31 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		radius = 1
 	}
 
-	// Get ship config for shape (cache it since we use it multiple times)
-	var shipConfig ShipTypeConfig
-	if entity.Type != EntityTypeProjectile {
-		shipConfig = GetShipTypeConfig(entity.ShipType)
-	} else {
-		shipConfig = ShipTypeConfig{Shape: ShipShapeCircle}
-	}
-
-	// Draw entity based on shape
+	// Draw entity based on type and shape
 	// For small entities (radius < 3), always use circles to reduce draw calls
 	if radius < 3.0 {
 		r.circleCount++
 		r.drawCallCount++
 		vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
+	} else if entity.Type == EntityTypeHomingRocket {
+		// Homing rockets are always rendered as triangles pointing at target
+		r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, ShipTypePlayer, true) // true = is homing rocket
 	} else {
+		// Get ship config for shape (cache it since we use it multiple times)
+		var shipConfig ShipTypeConfig
+		if entity.Type != EntityTypeProjectile {
+			shipConfig = GetShipTypeConfig(entity.ShipType)
+		} else {
+			shipConfig = ShipTypeConfig{Shape: ShipShapeCircle}
+		}
+
 		switch shipConfig.Shape {
 		case ShipShapeCircle:
 			r.circleCount++
 			r.drawCallCount++
 			vector.DrawFilledCircle(screen, float32(sx), float32(sy), float32(radius), clr, true)
 		case ShipShapeTriangle:
-			r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, entity.ShipType)
+			r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, entity.ShipType, false) // false = not homing rocket
 		case ShipShapeSquare:
 			r.drawSquare(screen, sx, sy, radius, entity.Rotation, clr)
 		case ShipShapeDiamond:
@@ -656,15 +655,18 @@ func (r *Renderer) drawAimTarget(screen *ebiten.Image, entity *Entity, player *E
 
 // drawTriangle draws an oblong triangle shape rotated by the entity's rotation
 // The front point extends further to clearly show direction (arrowhead shape)
-func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color, shipType ShipType) {
+func (r *Renderer) drawTriangle(screen *ebiten.Image, x, y, radius, rotation float64, clr color.Color, shipType ShipType, isHomingRocket bool) {
 	// Oblong triangle: front point extends further, back points form a wider base
 	frontLength := radius * 1.5 // Front extends 1.5x the radius
 	backOffset := radius * 0.5  // How far back the base is
 
-	// Make homing enemies narrower
+	// Make homing rockets narrower
 	backWidth := radius * 0.9 // Half-width of the back base (default)
-	if shipType == ShipTypeHomingSuicide {
+	if isHomingRocket {
 		backWidth = radius * 0.4 // Narrower for homing rockets
+	} else if shipType == ShipTypeHomingSuicide {
+		// Legacy support for old ship type (shouldn't be used anymore)
+		backWidth = radius * 0.4
 	}
 
 	// Front point (extends forward)

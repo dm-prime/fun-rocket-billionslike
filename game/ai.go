@@ -17,7 +17,7 @@ const (
 // canShipTargetEntity checks if a ship can target a specific entity based on ship config
 func canShipTargetEntity(shipType ShipType, target *Entity) bool {
 	shipConfig := GetShipTypeConfig(shipType)
-	
+
 	// Check entity type whitelist
 	if len(shipConfig.TargetEntityTypes) > 0 {
 		found := false
@@ -31,14 +31,14 @@ func canShipTargetEntity(shipType ShipType, target *Entity) bool {
 			return false
 		}
 	}
-	
+
 	// Check entity type blacklist
 	for _, blockedType := range shipConfig.BlacklistEntityTypes {
 		if target.Type == blockedType {
 			return false
 		}
 	}
-	
+
 	// Check ship type whitelist (only for non-projectile entities)
 	if target.Type != EntityTypeProjectile && len(shipConfig.TargetShipTypes) > 0 {
 		found := false
@@ -52,7 +52,7 @@ func canShipTargetEntity(shipType ShipType, target *Entity) bool {
 			return false
 		}
 	}
-	
+
 	// Check ship type blacklist (only for non-projectile entities)
 	if target.Type != EntityTypeProjectile {
 		for _, blockedShipType := range shipConfig.BlacklistShipTypes {
@@ -61,7 +61,7 @@ func canShipTargetEntity(shipType ShipType, target *Entity) bool {
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -81,21 +81,21 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, de
 	// Find nearest target of opposite faction using spatial partitioning
 	var targetEntity *Entity
 	nearestDistanceSq := math.MaxFloat64
-	
+
 	// Use spatial query to find nearby entities instead of iterating all entities
 	searchRadius := 1000.0 // Reasonable search radius
 	candidates := world.GetEntitiesInRadius(entity.X, entity.Y, searchRadius)
-	
+
 	for _, candidate := range candidates {
 		if !candidate.Active || candidate == entity || candidate.Health <= 0 {
 			continue
 		}
-		
-		// Skip untargetable entities (XP, destroyed indicators, etc.)
-		if candidate.Type == EntityTypeXP || candidate.Type == EntityTypeDestroyedIndicator {
+
+		// Skip untargetable entities (XP, destroyed indicators, homing rockets, etc.)
+		if candidate.Type == EntityTypeXP || candidate.Type == EntityTypeDestroyedIndicator || candidate.Type == EntityTypeHomingRocket {
 			continue
 		}
-		
+
 		candidateFaction := GetEntityFaction(candidate)
 		if candidateFaction == targetFaction {
 			// Check if this ship can target this entity based on ship config
@@ -105,14 +105,14 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, de
 			dx := candidate.X - entity.X
 			dy := candidate.Y - entity.Y
 			distanceSq := dx*dx + dy*dy // Use squared distance to avoid sqrt
-			
+
 			if distanceSq < nearestDistanceSq {
 				nearestDistanceSq = distanceSq
 				targetEntity = candidate
 			}
 		}
 	}
-	
+
 	// If no target found in search radius, check player specifically (might be outside radius)
 	if targetEntity == nil && player != nil && player.Active {
 		playerFaction := GetEntityFaction(player)
@@ -167,7 +167,7 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, de
 					targetX = targetEntity.X
 					targetY = targetEntity.Y
 				}
-				
+
 				// Calculate predictive aim target for shooting
 				aimX, aimY, _ := GetAimPoint(entity)
 				predictedX, predictedY := CalculatePredictiveAim(aimX, aimY, targetEntity)
@@ -297,7 +297,7 @@ func UpdateEnemyAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime f
 	case AIBehaviorZigzag:
 		// Zigzag pattern
 		aiInput.PatternTime += deltaTime
-		zigzagX := math.Sin(aiInput.PatternTime * 2.0) * 100
+		zigzagX := math.Sin(aiInput.PatternTime*2.0) * 100
 		aiInput.TargetX = entity.X + zigzagX
 		aiInput.TargetY = entity.Y - 50 // Move downward
 
@@ -307,4 +307,3 @@ func UpdateEnemyAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime f
 		aiInput.TargetY = entity.Y + 100
 	}
 }
-

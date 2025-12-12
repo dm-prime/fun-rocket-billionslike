@@ -18,10 +18,10 @@ type WeaponConfig struct {
 	Radius          float64 // For projectiles
 	InitialVelocity float64 // For homing missiles (launch speed)
 	Lifetime        float64 // For homing missiles (time before auto-detonation in seconds)
-	
+
 	// Targeting configuration
-	TargetEntityTypes []EntityType // Whitelist of entity types this weapon can target (empty = all)
-	TargetShipTypes   []ShipType   // Whitelist of ship types this weapon can target (empty = all)
+	TargetEntityTypes    []EntityType // Whitelist of entity types this weapon can target (empty = all)
+	TargetShipTypes      []ShipType   // Whitelist of ship types this weapon can target (empty = all)
 	BlacklistEntityTypes []EntityType // Blacklist of entity types this weapon cannot target
 	BlacklistShipTypes   []ShipType   // Blacklist of ship types this weapon cannot target
 }
@@ -31,31 +31,31 @@ func GetWeaponConfig(weaponType WeaponType) WeaponConfig {
 	switch weaponType {
 	case WeaponTypeBullet:
 		return WeaponConfig{
-			Type:            WeaponTypeBullet,
-			Damage:          10.0,
-			ProjectileSpeed: 500.0,
-			Cooldown:        0.1,
-			Radius:          2.5,
-			InitialVelocity: 0.0, // Not used for bullets
-			Lifetime:        0.0, // No lifetime limit for bullets
-			TargetEntityTypes: []EntityType{EntityTypeEnemy}, // Only target enemies
-			TargetShipTypes:   []ShipType{}, // All ship types allowed
+			Type:                 WeaponTypeBullet,
+			Damage:               10.0,
+			ProjectileSpeed:      500.0,
+			Cooldown:             0.1,
+			Radius:               2.5,
+			InitialVelocity:      0.0,                                                                            // Not used for bullets
+			Lifetime:             0.0,                                                                            // No lifetime limit for bullets
+			TargetEntityTypes:    []EntityType{EntityTypeEnemy},                                                  // Only target enemies
+			TargetShipTypes:      []ShipType{},                                                                   // All ship types allowed
 			BlacklistEntityTypes: []EntityType{EntityTypeProjectile, EntityTypeXP, EntityTypeDestroyedIndicator}, // Don't target projectiles, XP, or indicators
-			BlacklistShipTypes:   []ShipType{}, // No blacklisted ship types
+			BlacklistShipTypes:   []ShipType{},                                                                   // No blacklisted ship types
 		}
 	case WeaponTypeHomingMissile:
 		return WeaponConfig{
-			Type:            WeaponTypeHomingMissile,
-			Damage:          30.0, // Damage when homing enemy hits
-			ProjectileSpeed: 0.0,  // Not used for homing missiles
-			Cooldown:        1.0,
-			Radius:          0.0,   // Not used for homing missiles
-			InitialVelocity: 150.0, // Launch speed for homing enemy
-			Lifetime:        5.0,   // Auto-detonate after 5 seconds
-			TargetEntityTypes: []EntityType{EntityTypeEnemy}, // Only target enemies
-			TargetShipTypes:   []ShipType{ShipTypePlayer, ShipTypeShooter}, // Only target real ships (not rockets)
-			BlacklistEntityTypes: []EntityType{EntityTypeProjectile, EntityTypeXP, EntityTypeDestroyedIndicator}, // Don't target projectiles, XP, or indicators
-			BlacklistShipTypes:   []ShipType{ShipTypeHomingSuicide}, // Don't target rockets
+			Type:                 WeaponTypeHomingMissile,
+			Damage:               30.0, // Damage when homing enemy hits
+			ProjectileSpeed:      0.0,  // Not used for homing missiles
+			Cooldown:             1.0,
+			Radius:               0.0,                                                                                                    // Not used for homing missiles
+			InitialVelocity:      150.0,                                                                                                  // Launch speed for homing enemy
+			Lifetime:             5.0,                                                                                                    // Auto-detonate after 5 seconds
+			TargetEntityTypes:    []EntityType{EntityTypeEnemy},                                                                          // Only target enemies
+			TargetShipTypes:      []ShipType{ShipTypePlayer, ShipTypeShooter},                                                            // Only target real ships (not rockets)
+			BlacklistEntityTypes: []EntityType{EntityTypeProjectile, EntityTypeXP, EntityTypeDestroyedIndicator, EntityTypeHomingRocket}, // Don't target projectiles, XP, indicators, or homing rockets
+			BlacklistShipTypes:   []ShipType{},                                                                                           // No blacklisted ship types (using entity type blacklist instead)
 		}
 	default:
 		return GetWeaponConfig(WeaponTypeBullet)

@@ -529,7 +529,7 @@ func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weap
 	}
 }
 
-// spawnHomingMissile spawns a homing enemy (missile) that targets the opposite faction
+// spawnHomingMissile spawns a homing rocket that targets the opposite faction
 func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entity, weaponConfig WeaponConfig) {
 	if owner == nil {
 		return
@@ -538,22 +538,19 @@ func (g *Game) spawnHomingMissile(spawnX, spawnY, rotation float64, owner *Entit
 	// Get faction directly from owner entity (faction is set at spawn time)
 	ownerFaction := owner.Faction
 
-	// Spawn homing entity with same faction as owner
-	homingEnemyType := EnemyTypeRocket
-	homingShipType := GetEnemyTypeConfig(homingEnemyType).ShipType
+	// Spawn homing rocket with same faction as owner
+	homingAI := CreateEnemyAIWithType(EnemyTypeRocket)
+	homingRocket := NewHomingRocket(spawnX, spawnY, homingAI)
+	homingRocket.Faction = ownerFaction           // Inherit faction from owner
+	homingRocket.NoCollision = true               // Homing rockets don't collide with other entities (except targets)
+	homingRocket.Lifetime = weaponConfig.Lifetime // Set lifetime for auto-detonation
 
-	homingAI := CreateEnemyAIWithType(homingEnemyType)
-	homingEnemy := NewEntityWithShipType(spawnX, spawnY, EntityTypeEnemy, homingShipType, homingAI)
-	homingEnemy.Faction = ownerFaction           // Inherit faction from owner
-	homingEnemy.NoCollision = true               // Homing rockets don't collide with other entities (except targets)
-	homingEnemy.Lifetime = weaponConfig.Lifetime // Set lifetime for auto-detonation
+	// Give the homing rocket initial velocity in the shooting direction
+	homingRocket.VX = math.Cos(rotation) * weaponConfig.InitialVelocity
+	homingRocket.VY = math.Sin(rotation) * weaponConfig.InitialVelocity
+	homingRocket.Rotation = rotation
 
-	// Give the homing enemy initial velocity in the shooting direction
-	homingEnemy.VX = math.Cos(rotation) * weaponConfig.InitialVelocity
-	homingEnemy.VY = math.Sin(rotation) * weaponConfig.InitialVelocity
-	homingEnemy.Rotation = rotation
-
-	g.world.RegisterEntity(homingEnemy)
+	g.world.RegisterEntity(homingRocket)
 }
 
 // createDestroyedIndicator creates a visual indicator at the specified position
@@ -587,6 +584,11 @@ func (g *Game) createDestroyedIndicatorYellow(x, y float64) {
 
 // spawnXPFromEnemy creates an XP entity from a killed enemy
 func (g *Game) spawnXPFromEnemy(enemy *Entity, target *Entity) {
+	// Don't spawn XP from homing rockets
+	if enemy.Type == EntityTypeHomingRocket {
+		return
+	}
+
 	// Get score value from the enemy
 	shipConfig := GetShipTypeConfig(enemy.ShipType)
 	scoreValue := float64(shipConfig.Score)
@@ -692,8 +694,8 @@ func (g *Game) Update() error {
 		if entity.Input != nil {
 			entity.Input.Update(deltaTime)
 
-			// Update AI if it's an enemy
-			if entity.Type == EntityTypeEnemy {
+			// Update AI if it's an enemy or homing rocket
+			if entity.Type == EntityTypeEnemy || entity.Type == EntityTypeHomingRocket {
 				if aiInput, ok := entity.Input.(*AIInput); ok {
 					UpdateAI(aiInput, entity, g.player, g.world, deltaTime)
 				}
@@ -706,7 +708,7 @@ func (g *Game) Update() error {
 		// Check lifetime for homing missiles (auto-detonate after lifetime expires)
 		if entity.Lifetime > 0 && entity.Age >= entity.Lifetime {
 			// Lifetime expired - detonate the missile
-			if entity.ShipType == ShipTypeHomingSuicide {
+			if entity.Type == EntityTypeHomingRocket {
 				// Create destroyed indicator at missile position
 				g.createDestroyedIndicator(entity.X, entity.Y, entity.Faction)
 				entity.Health = 0 // Mark for removal (don't set Active=false, let update loop handle cleanup)

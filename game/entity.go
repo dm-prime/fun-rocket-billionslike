@@ -68,7 +68,30 @@ const (
 	EntityTypeProjectile
 	EntityTypeDestroyedIndicator
 	EntityTypeXP
+	EntityTypeHomingRocket
 )
+
+// HomingRocketConfig holds configuration for homing rockets
+type HomingRocketConfig struct {
+	Speed        float64 // Max speed (pixels per second)
+	Acceleration float64 // Acceleration towards target (pixels per second squared)
+	Health       float64
+	Radius       float64
+	Friction     float64 // Velocity damping factor (0-1, higher = less friction)
+	Score        int     // Score value when destroyed
+}
+
+// GetHomingRocketConfig returns the configuration for homing rockets
+func GetHomingRocketConfig() HomingRocketConfig {
+	return HomingRocketConfig{
+		Speed:        300.0,  // Max speed
+		Acceleration: 350.0,  // Acceleration towards target
+		Health:       1.0,    // Very low health (dies on impact)
+		Radius:       6.0,    // Collision radius
+		Friction:     0.9999, // Very small friction
+		Score:        10,     // Small score for easy enemies
+	}
+}
 
 // NewEntity creates a new entity with the given parameters
 func NewEntity(x, y, radius float64, entityType EntityType, input InputProvider) *Entity {
@@ -78,7 +101,7 @@ func NewEntity(x, y, radius float64, entityType EntityType, input InputProvider)
 	case EntityTypePlayer:
 		shipType = ShipTypePlayer
 	case EntityTypeEnemy:
-		shipType = ShipTypeHomingSuicide // Default enemy ship type
+		shipType = ShipTypeShooter // Default enemy ship type
 	default:
 		shipType = ShipTypePlayer // Default for projectiles (not really used)
 	}
@@ -118,6 +141,26 @@ func NewEntityWithShipType(x, y float64, entityType EntityType, shipType ShipTyp
 	return entity
 }
 
+// NewHomingRocket creates a new homing rocket entity
+// Faction should be set separately after creation
+func NewHomingRocket(x, y float64, input InputProvider) *Entity {
+	rocketConfig := GetHomingRocketConfig()
+	entity := &Entity{
+		X:         x,
+		Y:         y,
+		Radius:    rocketConfig.Radius,
+		Type:      EntityTypeHomingRocket,
+		ShipType:  ShipTypePlayer, // Not used, but set to avoid issues
+		Input:     input,
+		MaxHealth: rocketConfig.Health,
+		Health:    rocketConfig.Health,
+		Active:    true,
+		Age:       0.0,
+		Faction:   FactionEnemy, // Default, should be set explicitly
+	}
+	return entity
+}
+
 // Update updates the entity based on input and applies movement
 func (e *Entity) Update(deltaTime float64) {
 	if !e.Active || e.Health <= 0 {
@@ -127,10 +170,48 @@ func (e *Entity) Update(deltaTime float64) {
 	// Update age
 	e.Age += deltaTime
 
-	if e.Input != nil && e.Type != EntityTypeProjectile {
+	// Special handling for homing rockets: no rotation physics, accelerate directly towards target
+	if e.Type == EntityTypeHomingRocket && e.Input != nil {
+		rocketConfig := GetHomingRocketConfig()
+		
+		// Get target from AI input
+		if aiInput, ok := e.Input.(*AIInput); ok {
+			// Calculate direction to target
+			dx := aiInput.TargetX - e.X
+			dy := aiInput.TargetY - e.Y
+			distance := math.Sqrt(dx*dx + dy*dy)
+
+			if distance > 0.1 {
+				// Normalize direction
+				dirX := dx / distance
+				dirY := dy / distance
+
+				// Update rotation to point at target (for rendering)
+				e.Rotation = math.Atan2(dy, dx)
+
+				// Accelerate directly towards target
+				acceleration := rocketConfig.Acceleration * deltaTime
+				e.VX += dirX * acceleration
+				e.VY += dirY * acceleration
+			}
+		}
+
+		// Apply friction to velocity
+		e.VX *= rocketConfig.Friction
+		e.VY *= rocketConfig.Friction
+
+		// Clamp velocity to max speed
+		currentSpeed := math.Sqrt(e.VX*e.VX + e.VY*e.VY)
+		if currentSpeed > rocketConfig.Speed {
+			scale := rocketConfig.Speed / currentSpeed
+			e.VX *= scale
+			e.VY *= scale
+		}
+	} else if e.Input != nil && e.Type != EntityTypeProjectile {
+		// Standard physics for other entities
 		// Get ship config for physics properties
 		shipConfig := GetShipTypeConfig(e.ShipType)
-
+		
 		// Handle rotation (angular velocity)
 		rotationInput := e.Input.GetRotation()
 		if math.Abs(rotationInput) > 0.01 {
@@ -176,6 +257,7 @@ func (e *Entity) Update(deltaTime float64) {
 			e.VX *= scale
 			e.VY *= scale
 		}
+	}
 	} else if e.Type == EntityTypeProjectile {
 		// Projectiles maintain their velocity without physics
 		// (they're already set when created)

@@ -92,13 +92,13 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 		return
 	}
 
-	// Check if either entity is a homing suicide enemy colliding with opposite faction
-	// Homing suicide enemies explode on contact with opposite faction (even if NoCollision is set)
-	if e1.ShipType == ShipTypeHomingSuicide && e2.ShipType != ShipTypeHomingSuicide {
+	// Check if either entity is a homing rocket colliding with opposite faction
+	// Homing rockets explode on contact with opposite faction (even if NoCollision is set)
+	if e1.Type == EntityTypeHomingRocket && e2.Type != EntityTypeHomingRocket {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
-			// Different factions - homing suicide explodes
+			// Different factions - homing rocket explodes
 			e2.Health -= 50.0 // Damage target
-			e1.Health = 0     // Destroy homing enemy (don't set Active=false, let update loop handle cleanup)
+			e1.Health = 0     // Destroy homing rocket (don't set Active=false, let update loop handle cleanup)
 			return
 		}
 		// Same faction - skip collision if NoCollision is set
@@ -106,11 +106,11 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 			return
 		}
 	}
-	if e2.ShipType == ShipTypeHomingSuicide && e1.ShipType != ShipTypeHomingSuicide {
+	if e2.Type == EntityTypeHomingRocket && e1.Type != EntityTypeHomingRocket {
 		if GetEntityFaction(e1) != GetEntityFaction(e2) {
-			// Different factions - homing suicide explodes
+			// Different factions - homing rocket explodes
 			e1.Health -= 50.0 // Damage target
-			e2.Health = 0     // Destroy homing enemy (don't set Active=false, let update loop handle cleanup)
+			e2.Health = 0     // Destroy homing rocket (don't set Active=false, let update loop handle cleanup)
 			return
 		}
 		// Same faction - skip collision if NoCollision is set
@@ -180,8 +180,8 @@ func (c *CollisionSystem) HandleProjectileCollision(projectile, target *Entity) 
 			// Create destroyed indicator in yellow (bullet color)
 			if c.game != nil {
 				c.game.createDestroyedIndicatorYellow(target.X, target.Y)
-				// Don't spawn XP from rockets (homing suicide enemies)
-				if target.ShipType != ShipTypeHomingSuicide {
+				// Don't spawn XP from homing rockets
+				if target.Type != EntityTypeHomingRocket {
 					// Spawn XP entity at enemy position, attracted to the player
 					// Pass the enemy to get its score value
 					c.game.spawnXPFromEnemy(target, projectile.Owner)
