@@ -824,60 +824,86 @@ func (r *Renderer) drawTransparentLine(screen *ebiten.Image, x1, y1, x2, y2 floa
 	r.drawTransparentLineWithWidth(screen, x1, y1, x2, y2, clr, 1.5)
 }
 
-// drawTransparentLineWithWidth draws a line with proper alpha transparency and custom width
-// OPTIMIZED: Uses direct vector drawing instead of creating temporary images for better performance
+// drawTransparentLineWithWidth draws a line with additive blending for a glowing effect
 func (r *Renderer) drawTransparentLineWithWidth(screen *ebiten.Image, x1, y1, x2, y2 float64, clr color.RGBA, width float64) {
 	// Skip if alpha is too low (performance optimization)
 	if clr.A < 10 {
 		return
 	}
-	
-	// Use direct vector drawing - much faster than creating temporary images
-	// Note: This doesn't support per-pixel alpha blending, but is much faster
-	// For very transparent lines, we'll use a simpler approach
-	if clr.A < 128 {
-		// For semi-transparent lines, use a lighter color and thinner line
-		// This is a performance trade-off - we lose perfect alpha but gain speed
-		lightClr := color.RGBA{
-			R: uint8(float64(clr.R) * float64(clr.A) / 255.0),
-			G: uint8(float64(clr.G) * float64(clr.A) / 255.0),
-			B: uint8(float64(clr.B) * float64(clr.A) / 255.0),
-			A: 255,
-		}
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(width), lightClr, true)
-	} else {
-		// For opaque lines, draw directly
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(width), clr, true)
+
+	// Calculate line bounds for temporary image
+	margin := width + 2
+	minX := math.Min(x1, x2) - margin
+	maxX := math.Max(x1, x2) + margin
+	minY := math.Min(y1, y2) - margin
+	maxY := math.Max(y1, y2) + margin
+
+	imgWidth := int(maxX - minX)
+	imgHeight := int(maxY - minY)
+	if imgWidth <= 0 || imgHeight <= 0 {
+		return
 	}
+
+	// Create temporary image for the line
+	lineImg := ebiten.NewImage(imgWidth, imgHeight)
+
+	// Draw line on temporary image with full brightness, alpha controls intensity
+	lineX1 := float32(x1 - minX)
+	lineY1 := float32(y1 - minY)
+	lineX2 := float32(x2 - minX)
+	lineY2 := float32(y2 - minY)
+	
+	// Scale color by alpha for additive blending intensity
+	addClr := color.RGBA{
+		R: uint8(float64(clr.R) * float64(clr.A) / 255.0),
+		G: uint8(float64(clr.G) * float64(clr.A) / 255.0),
+		B: uint8(float64(clr.B) * float64(clr.A) / 255.0),
+		A: 255,
+	}
+	vector.StrokeLine(lineImg, lineX1, lineY1, lineX2, lineY2, float32(width), addClr, true)
+
+	// Draw with additive blending (BlendLighter adds src + dst)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(minX, minY)
+	op.Blend = ebiten.BlendLighter
+	screen.DrawImage(lineImg, op)
 }
 
-// drawTransparentCircle draws a circle outline with proper alpha transparency
-// OPTIMIZED: Uses direct vector drawing instead of creating temporary images for better performance
+// drawTransparentCircle draws a circle outline with additive blending for a glowing effect
 func (r *Renderer) drawTransparentCircle(screen *ebiten.Image, x, y, radius float64, clr color.RGBA) {
 	// Skip if alpha is too low (performance optimization)
 	if clr.A < 10 {
 		return
 	}
-	
+
 	// Skip very small circles (performance optimization)
 	if radius < 1 {
 		return
 	}
-	
-	// Use direct vector drawing - much faster than creating temporary images
-	// For semi-transparent circles, use a lighter color (performance trade-off)
-	if clr.A < 128 {
-		lightClr := color.RGBA{
-			R: uint8(float64(clr.R) * float64(clr.A) / 255.0),
-			G: uint8(float64(clr.G) * float64(clr.A) / 255.0),
-			B: uint8(float64(clr.B) * float64(clr.A) / 255.0),
-			A: 255,
-		}
-		vector.StrokeCircle(screen, float32(x), float32(y), float32(radius), 1.5, lightClr, true)
-	} else {
-		// For opaque circles, draw directly
-		vector.StrokeCircle(screen, float32(x), float32(y), float32(radius), 1.5, clr, true)
+
+	// Create temporary image for the circle
+	size := int(radius*2 + 4)
+	if size <= 0 {
+		return
 	}
+	circleImg := ebiten.NewImage(size, size)
+
+	// Draw circle on temporary image with alpha-scaled color for additive intensity
+	centerX := float32(radius + 2)
+	centerY := float32(radius + 2)
+	addClr := color.RGBA{
+		R: uint8(float64(clr.R) * float64(clr.A) / 255.0),
+		G: uint8(float64(clr.G) * float64(clr.A) / 255.0),
+		B: uint8(float64(clr.B) * float64(clr.A) / 255.0),
+		A: 255,
+	}
+	vector.StrokeCircle(circleImg, centerX, centerY, float32(radius), 1.5, addClr, true)
+
+	// Draw with additive blending (BlendLighter adds src + dst)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x-radius-2, y-radius-2)
+	op.Blend = ebiten.BlendLighter
+	screen.DrawImage(circleImg, op)
 }
 
 // renderCellGrid renders the cell grid on the background
