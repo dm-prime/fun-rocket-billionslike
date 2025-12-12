@@ -129,7 +129,10 @@ func (r *Renderer) Render(screen *ebiten.Image, world *World, player *Entity, sc
 			if entity.Health <= 0 {
 				continue
 			}
-			r.renderEntityWithAim(screen, entity, player, true)
+			
+			// Only draw aim lines for the player (major performance optimization)
+			drawAimLines := (entity == player && entity != nil)
+			r.renderEntityWithAim(screen, entity, player, drawAimLines)
 		}
 	}
 
@@ -147,13 +150,13 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 	// Convert world coordinates to screen coordinates
 	sx, sy := r.camera.WorldToScreen(entity.X, entity.Y)
 
-	// Skip if outside screen bounds (with margin)
+	// Early culling: Skip if outside screen bounds (with margin)
 	margin := 100.0
 	if sx < -margin || sx > r.camera.Width+margin ||
 		sy < -margin || sy > r.camera.Height+margin {
 		return
 	}
-
+	
 	// Handle destroyed indicators separately
 	if entity.Type == EntityTypeDestroyedIndicator {
 		r.renderDestroyedIndicator(screen, entity)
@@ -164,6 +167,14 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 	if entity.Type == EntityTypeXP {
 		r.renderXP(screen, entity)
 		return
+	}
+
+	// Calculate radius for culling and rendering
+	radius := entity.Radius * r.camera.Zoom
+	
+	// Skip rendering very small entities when zoomed out (performance optimization)
+	if radius < 0.5 {
+		return // Too small to see, skip rendering
 	}
 
 	// Determine color based on ship type
@@ -184,8 +195,7 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		}
 	}
 
-	// Draw entity based on ship shape
-	radius := entity.Radius * r.camera.Zoom
+	// Clamp minimum radius for rendering
 	if radius < 1 {
 		radius = 1
 	}
@@ -335,6 +345,12 @@ func (r *Renderer) renderDestroyedIndicator(screen *ebiten.Image, entity *Entity
 		sy < -margin || sy > r.camera.Height+margin {
 		return
 	}
+	
+	// Skip rendering if indicator is too old/faded (performance optimization)
+	if entity.Lifetime > 0 && entity.Age > entity.Lifetime*0.8 {
+		// Indicator is fading out, skip rendering to save draw calls
+		return
+	}
 
 	// Determine color - yellow for bullet kills, faction color for missile timeouts
 	var baseColor color.RGBA
@@ -395,18 +411,23 @@ func (r *Renderer) renderXP(screen *ebiten.Image, entity *Entity) {
 	// Convert world coordinates to screen coordinates
 	sx, sy := r.camera.WorldToScreen(entity.X, entity.Y)
 
-	// Skip if outside screen bounds (with margin)
+	// Early culling: Skip if outside screen bounds (with margin)
 	margin := 100.0
 	if sx < -margin || sx > r.camera.Width+margin ||
 		sy < -margin || sy > r.camera.Height+margin {
+		return
+	}
+	
+	// Skip rendering very small XP when zoomed out
+	radius := entity.Radius * r.camera.Zoom
+	if radius < 0.5 {
 		return
 	}
 
 	// XP is yellow/gold colored
 	clr := color.RGBA{255, 215, 0, 255} // Gold color
 
-	// Draw XP as a small circle
-	radius := entity.Radius * r.camera.Zoom
+	// Use radius we already calculated above, clamp minimum for rendering
 	if radius < 2 {
 		radius = 2
 	}

@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"runtime"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -636,9 +637,16 @@ func (g *Game) Update() error {
 			projectileCount := len(g.projectiles)
 			reason := fmt.Sprintf("fps%.0f-entities%d-projectiles%d", g.fps, entityCount, projectileCount)
 			
-			// Capture profile synchronously before exiting (2 seconds should be enough to capture useful data)
-			fmt.Printf("FPS drop detected (%.0f FPS). Capturing performance profile...\n", g.fps)
-			err := g.profiler.CaptureProfileSync(reason, 2*time.Second)
+			// Save the current continuous CPU profile (captures data leading up to the drop)
+			fmt.Printf("FPS drop detected (%.0f FPS). Saving performance profile...\n", g.fps)
+			
+			// Log GC stats before saving profile
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			fmt.Printf("GC stats: NumGC=%d, PauseTotal=%v, HeapAlloc=%d KB\n", 
+				m.NumGC, m.PauseTotalNs, m.HeapAlloc/1024)
+			
+			err := g.profiler.CaptureProfileSync(reason, 0) // duration ignored for continuous profiling
 			if err != nil {
 				fmt.Printf("Failed to capture profile: %v\n", err)
 			}

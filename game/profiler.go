@@ -19,18 +19,123 @@ type Profiler struct {
 	captureCooldown   time.Duration
 	profilesDir       string
 	captureDuration   time.Duration
+	
+	// Continuous CPU profiling
+	cpuProfileFile    *os.File
+	cpuProfileActive  bool
+	cpuProfileStartTime time.Time
 }
 
-// NewProfiler creates a new profiler instance
+// NewProfiler creates a new profiler instance and starts continuous CPU profiling
 func NewProfiler() *Profiler {
 	profilesDir := "profiles"
 	os.MkdirAll(profilesDir, 0755)
 	
-	return &Profiler{
+	p := &Profiler{
 		captureCooldown: 10 * time.Second, // Don't capture more than once every 10 seconds
 		profilesDir:     profilesDir,
 		captureDuration: 5 * time.Second,   // Capture 5 seconds of data
+		cpuProfileActive: false,
 	}
+	
+	// Start continuous CPU profiling
+	p.StartContinuousCPUProfile()
+	
+	return p
+}
+
+// StartContinuousCPUProfile starts continuous CPU profiling in the background
+// This avoids the stop-the-world pause that happens when starting profiling on-demand
+func (p *Profiler) StartContinuousCPUProfile() error {
+	p.mu.Lock()
+	if p.cpuProfileActive {
+		p.mu.Unlock()
+		return fmt.Errorf("CPU profiling already active")
+	}
+	
+	// Create a temporary file for continuous profiling
+	// We'll save it when FPS drops are detected
+	tempFile, err := os.CreateTemp(p.profilesDir, "cpu-profile-temp-*.prof")
+	if err != nil {
+		p.mu.Unlock()
+		return fmt.Errorf("failed to create temp profile file: %w", err)
+	}
+	
+	// Start CPU profiling
+	if err := pprof.StartCPUProfile(tempFile); err != nil {
+		tempFile.Close()
+		os.Remove(tempFile.Name())
+		p.mu.Unlock()
+		return fmt.Errorf("failed to start CPU profile: %w", err)
+	}
+	
+	p.cpuProfileFile = tempFile
+	p.cpuProfileActive = true
+	p.cpuProfileStartTime = time.Now()
+	p.mu.Unlock()
+	
+	return nil
+}
+
+// StopContinuousCPUProfile stops continuous CPU profiling and saves the profile
+func (p *Profiler) StopContinuousCPUProfile(reason string) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
+	if !p.cpuProfileActive {
+		return "", fmt.Errorf("CPU profiling not active")
+	}
+	
+	// Stop profiling
+	pprof.StopCPUProfile()
+	
+	// Generate filename with timestamp
+	timestamp := time.Now().Format("20060102-150405")
+	baseName := fmt.Sprintf("fps-drop-%s-%s", timestamp, reason)
+	profilePath := filepath.Join(p.profilesDir, baseName+".cpu.prof")
+	
+	// Close temp file
+	tempPath := p.cpuProfileFile.Name()
+	p.cpuProfileFile.Close()
+	
+	// Rename temp file to final location
+	if err := os.Rename(tempPath, profilePath); err != nil {
+		// If rename fails, try copying
+		if copyErr := p.copyFile(tempPath, profilePath); copyErr != nil {
+			os.Remove(tempPath)
+			return "", fmt.Errorf("failed to save profile: %w", err)
+		}
+		os.Remove(tempPath)
+	}
+	
+	p.cpuProfileActive = false
+	
+	// Restart continuous profiling
+	go func() {
+		if err := p.StartContinuousCPUProfile(); err != nil {
+			fmt.Printf("Warning: Failed to restart CPU profiling: %v\n", err)
+		}
+	}()
+	
+	return profilePath, nil
+}
+
+// copyFile copies a file from src to dst
+func (p *Profiler) copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+	
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+	
+	_, err = destFile.ReadFrom(sourceFile)
+	return err
 }
 
 // CaptureProfile captures CPU profile and trace when FPS drops
@@ -168,98 +273,44 @@ func (p *Profiler) analyzeProfile(baseName string) {
 	fmt.Printf("  Sys: %d KB\n", m.Sys/1024)
 	fmt.Printf("  NumGC: %d\n", m.NumGC)
 	fmt.Printf("  HeapObjects: %d\n", m.HeapObjects)
+	
+	// GC pause statistics
+	if m.NumGC > 0 {
+		avgPauseNs := m.PauseTotalNs / uint64(m.NumGC)
+		fmt.Printf("  GC Pause Total: %.2f ms\n", float64(m.PauseTotalNs)/1e6)
+		fmt.Printf("  GC Pause Avg: %.2f ms\n", float64(avgPauseNs)/1e6)
+		if m.NumGC < 256 {
+			fmt.Printf("  GC Pause Max: %.2f ms\n", float64(m.PauseNs[m.NumGC-1])/1e6)
+		} else {
+			fmt.Printf("  GC Pause Max: %.2f ms\n", float64(m.PauseNs[(m.NumGC+255)%256])/1e6)
+		}
+	}
+	
 	fmt.Printf("\n=== End Analysis ===\n\n")
 }
 
-// CaptureProfileSync captures CPU profile and trace synchronously (blocks until complete)
-// This is used when the game is about to exit, so we can ensure data is written
+// CaptureProfileSync saves the current continuous CPU profile when FPS drop is detected
+// This avoids stop-the-world pauses by using already-running profiling
 func (p *Profiler) CaptureProfileSync(reason string, duration time.Duration) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	// Save the current continuous CPU profile (captures data from before the drop)
+	profilePath, err := p.StopContinuousCPUProfile(reason)
+	if err != nil {
+		return fmt.Errorf("failed to save CPU profile: %w", err)
+	}
 	
-	// Generate timestamped filename
-	timestamp := time.Now().Format("20060102-150405")
-	baseName := fmt.Sprintf("fps-drop-%s-%s", timestamp, reason)
-	
-	// Capture CPU profile and trace in parallel
-	var wg sync.WaitGroup
-	var cpuErr, traceErr error
-	wg.Add(2)
-	
-	go func() {
-		defer wg.Done()
-		cpuErr = p.captureCPUProfileSync(baseName, duration)
-	}()
-	
-	go func() {
-		defer wg.Done()
-		traceErr = p.captureTraceSync(baseName, duration)
-	}()
-	
-	// Wait for both captures to complete
-	wg.Wait()
+	// Extract base name for analysis
+	baseName := filepath.Base(profilePath)
+	baseName = baseName[:len(baseName)-len(".cpu.prof")]
 	
 	// Analyze the profile
 	p.analyzeProfile(baseName)
 	
-	if cpuErr != nil {
-		return cpuErr
-	}
-	if traceErr != nil {
-		return traceErr
-	}
-	return nil
-}
-
-// captureCPUProfileSync captures a CPU profile synchronously
-func (p *Profiler) captureCPUProfileSync(baseName string, duration time.Duration) error {
-	profilePath := filepath.Join(p.profilesDir, baseName+".cpu.prof")
-	
-	file, err := os.Create(profilePath)
-	if err != nil {
-		return fmt.Errorf("failed to create profile file: %w", err)
-	}
-	defer file.Close()
-	
-	// Start CPU profiling
-	if err := pprof.StartCPUProfile(file); err != nil {
-		return fmt.Errorf("failed to start CPU profile: %w", err)
-	}
-	
-	// Profile for the specified duration
-	time.Sleep(duration)
-	
-	// Stop profiling
-	pprof.StopCPUProfile()
-	
 	fmt.Printf("CPU profile saved to: %s\n", profilePath)
+	fmt.Printf("Note: Trace capture skipped to avoid stop-the-world pause\n")
+	
 	return nil
 }
 
-// captureTraceSync captures an execution trace synchronously
-func (p *Profiler) captureTraceSync(baseName string, duration time.Duration) error {
-	tracePath := filepath.Join(p.profilesDir, baseName+".trace")
-	
-	file, err := os.Create(tracePath)
-	if err != nil {
-		return fmt.Errorf("failed to create trace file: %w", err)
-	}
-	defer file.Close()
-	
-	// Start tracing
-	if err := trace.Start(file); err != nil {
-		return fmt.Errorf("failed to start trace: %w", err)
-	}
-	
-	// Trace for the specified duration
-	time.Sleep(duration)
-	
-	// Stop tracing
-	trace.Stop()
-	
-	fmt.Printf("Trace saved to: %s\n", tracePath)
-	return nil
-}
 
 // IsProfiling returns whether a profile capture is currently in progress
 func (p *Profiler) IsProfiling() bool {
