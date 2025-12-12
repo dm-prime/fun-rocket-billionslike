@@ -44,6 +44,12 @@ type ShipTypeConfig struct {
 
 	// Score value when destroyed
 	Score int
+	
+	// Targeting configuration (for AI ships)
+	TargetEntityTypes []EntityType // Whitelist of entity types this ship can target (empty = all)
+	TargetShipTypes   []ShipType   // Whitelist of ship types this ship can target (empty = all)
+	BlacklistEntityTypes []EntityType // Blacklist of entity types this ship cannot target
+	BlacklistShipTypes   []ShipType   // Blacklist of ship types this ship cannot target
 }
 
 // ShipShape defines the visual shape of a ship
@@ -97,6 +103,10 @@ func GetShipTypeConfig(shipType ShipType) ShipTypeConfig {
 			DefaultWeaponType:   WeaponTypeNone,       // Not used (doesn't shoot)
 			Score:               10,                   // Small score for easy enemies
 			TurretMounts:        []TurretMountPoint{}, // No turrets
+			TargetEntityTypes:  []EntityType{EntityTypePlayer, EntityTypeEnemy}, // Target players and enemies
+			TargetShipTypes:    []ShipType{ShipTypePlayer, ShipTypeShooter}, // Only target real ships (not rockets)
+			BlacklistEntityTypes: []EntityType{EntityTypeProjectile, EntityTypeXP, EntityTypeDestroyedIndicator}, // Don't target projectiles, XP, or indicators
+			BlacklistShipTypes:   []ShipType{ShipTypeHomingSuicide}, // Don't target rockets
 		}
 	case ShipTypeShooter:
 		return ShipTypeConfig{

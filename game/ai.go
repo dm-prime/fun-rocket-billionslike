@@ -14,6 +14,57 @@ const (
 	AIBehaviorZigzag
 )
 
+// canShipTargetEntity checks if a ship can target a specific entity based on ship config
+func canShipTargetEntity(shipType ShipType, target *Entity) bool {
+	shipConfig := GetShipTypeConfig(shipType)
+	
+	// Check entity type whitelist
+	if len(shipConfig.TargetEntityTypes) > 0 {
+		found := false
+		for _, allowedType := range shipConfig.TargetEntityTypes {
+			if target.Type == allowedType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	
+	// Check entity type blacklist
+	for _, blockedType := range shipConfig.BlacklistEntityTypes {
+		if target.Type == blockedType {
+			return false
+		}
+	}
+	
+	// Check ship type whitelist (only for non-projectile entities)
+	if target.Type != EntityTypeProjectile && len(shipConfig.TargetShipTypes) > 0 {
+		found := false
+		for _, allowedShipType := range shipConfig.TargetShipTypes {
+			if target.ShipType == allowedShipType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	
+	// Check ship type blacklist (only for non-projectile entities)
+	if target.Type != EntityTypeProjectile {
+		for _, blockedShipType := range shipConfig.BlacklistShipTypes {
+			if target.ShipType == blockedShipType {
+				return false
+			}
+		}
+	}
+	
+	return true
+}
+
 // UpdateAI updates AI input providers with behavior patterns
 func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, deltaTime float64) {
 	if aiInput == nil {
@@ -47,6 +98,10 @@ func UpdateAI(aiInput *AIInput, entity *Entity, player *Entity, world *World, de
 		
 		candidateFaction := GetEntityFaction(candidate)
 		if candidateFaction == targetFaction {
+			// Check if this ship can target this entity based on ship config
+			if !canShipTargetEntity(entity.ShipType, candidate) {
+				continue
+			}
 			dx := candidate.X - entity.X
 			dy := candidate.Y - entity.Y
 			distanceSq := dx*dx + dy*dy // Use squared distance to avoid sqrt

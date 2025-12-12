@@ -174,6 +174,57 @@ func (g *Game) isPlayerRegistered() bool {
 	return false
 }
 
+// canWeaponTargetEntity checks if a weapon can target a specific entity based on weapon config
+func canWeaponTargetEntity(weaponType WeaponType, target *Entity) bool {
+	weaponConfig := GetWeaponConfig(weaponType)
+	
+	// Check entity type whitelist
+	if len(weaponConfig.TargetEntityTypes) > 0 {
+		found := false
+		for _, allowedType := range weaponConfig.TargetEntityTypes {
+			if target.Type == allowedType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	
+	// Check entity type blacklist
+	for _, blockedType := range weaponConfig.BlacklistEntityTypes {
+		if target.Type == blockedType {
+			return false
+		}
+	}
+	
+	// Check ship type whitelist (only for non-projectile entities)
+	if target.Type != EntityTypeProjectile && len(weaponConfig.TargetShipTypes) > 0 {
+		found := false
+		for _, allowedShipType := range weaponConfig.TargetShipTypes {
+			if target.ShipType == allowedShipType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	
+	// Check ship type blacklist (only for non-projectile entities)
+	if target.Type != EntityTypeProjectile {
+		for _, blockedShipType := range weaponConfig.BlacklistShipTypes {
+			if target.ShipType == blockedShipType {
+				return false
+			}
+		}
+	}
+	
+	return true
+}
+
 // updatePlayerTargeting finds the nearest enemy for each turret and updates turret rotation to face it
 // Each turret targets a different enemy to split fire
 func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64) {
@@ -232,6 +283,11 @@ func (g *Game) updatePlayerTargeting(playerInput *PlayerInput, deltaTime float64
 
 			// Skip enemies already targeted by other turrets
 			if targetedEnemies[entity] {
+				continue
+			}
+			
+			// Check if this weapon can target this entity based on weapon config
+			if !canWeaponTargetEntity(mount.WeaponType, entity) {
 				continue
 			}
 
