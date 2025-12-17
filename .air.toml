@@ -2,13 +2,17 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  # Clean up build directory before building
-  pre_cmd = ["rm -r -Force tmp -ErrorAction SilentlyContinue"]
-  cmd = "go build -o ./tmp/main.exe ."
-  bin = "tmp/main.exe"
+  cmd = "go build -o ./main.exe ."
+  bin = "main.exe"
   include_ext = ["go"]
   exclude_dir = ["tmp", "vendor"]
   delay = 1000
+  # When the build fails, don't keep the last-good binary running.
+  stop_on_error = true
+  # Windows doesn't support sending interrupt signals reliably for child processes.
+  send_interrupt = false
+  # Kill immediately (ms) after stopping is requested.
+  kill_delay = "0s"
 
 [log]
   time = false
