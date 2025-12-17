@@ -321,6 +321,32 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		vector.StrokeLine(screen, float32(sx), float32(sy), float32(endX), float32(endY), 2, clr, true)
 	}
 
+	// Draw velocity vector - only for player
+	if entity.Type != EntityTypeProjectile && entity == player && radius >= 3.0 {
+		// Calculate velocity magnitude and direction
+		velocityMagnitude := math.Sqrt(entity.VX*entity.VX + entity.VY*entity.VY)
+		if velocityMagnitude > 0.1 { // Only draw if moving
+			// Scale velocity vector for visibility (scale factor to make it visible)
+			// Use a scale that makes the vector proportional but visible
+			scale := 0.1 // 0.1 pixels per pixel/second (adjust as needed)
+			velLength := velocityMagnitude * scale
+
+			// Normalize velocity direction
+			velDirX := entity.VX / velocityMagnitude
+			velDirY := entity.VY / velocityMagnitude
+
+			// Calculate end point of velocity vector
+			velEndX := sx + velDirX*velLength
+			velEndY := sy + velDirY*velLength
+
+			// Draw velocity vector in cyan to distinguish from rotation indicator
+			velocityColor := color.RGBA{0, 255, 255, 255} // Cyan
+			r.lineCount++
+			r.drawCallCount++
+			vector.StrokeLine(screen, float32(sx), float32(sy), float32(velEndX), float32(velEndY), 2, velocityColor, true)
+		}
+	}
+
 	// Draw turret mount points (only for ships, not projectiles)
 	// Only draw turrets for player to save draw calls (performance optimization)
 	// Skip if entity is too small (performance optimization)
