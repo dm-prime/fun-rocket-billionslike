@@ -4,6 +4,10 @@ import (
 	"math"
 )
 
+// MaxEntitySpeed is the maximum speed for all entities (pixels per second)
+// Set higher than the previous ship speed limits (which were 200-300)
+const MaxEntitySpeed = 500.0
+
 // Entity represents a game entity (player, enemy, or projectile)
 type Entity struct {
 	// Position in world coordinates
@@ -73,7 +77,7 @@ const (
 
 // HomingRocketConfig holds configuration for homing rockets
 type HomingRocketConfig struct {
-	Speed        float64 // Max speed (pixels per second) - not enforced, rockets have no speed limit
+	Speed        float64 // Legacy field (not used - speed limit enforced globally by MaxEntitySpeed)
 	Acceleration float64 // Acceleration towards target (pixels per second squared)
 	Health       float64
 	Radius       float64
@@ -84,7 +88,7 @@ type HomingRocketConfig struct {
 // GetHomingRocketConfig returns the configuration for homing rockets
 func GetHomingRocketConfig() HomingRocketConfig {
 	return HomingRocketConfig{
-		Speed:        300.0,  // Max speed
+		Speed:        0.0,    // Not used (speed limit enforced globally by MaxEntitySpeed)
 		Acceleration: 350.0,  // Acceleration towards target
 		Health:       1.0,    // Very low health (dies on impact)
 		Radius:       6.0,    // Collision radius
@@ -173,7 +177,7 @@ func (e *Entity) Update(deltaTime float64) {
 	// Special handling for homing rockets: predictive intercept with acceleration
 	if e.Type == EntityTypeHomingRocket && e.Input != nil {
 		rocketConfig := GetHomingRocketConfig()
-		
+
 		// Get target from AI input
 		if aiInput, ok := e.Input.(*AIInput); ok {
 			if aiInput.TargetEntity != nil && aiInput.TargetEntity.Active {
@@ -220,13 +224,11 @@ func (e *Entity) Update(deltaTime float64) {
 		// Apply friction to velocity
 		e.VX *= rocketConfig.Friction
 		e.VY *= rocketConfig.Friction
-
-		// No speed limit for rockets (as requested)
 	} else if e.Input != nil && e.Type != EntityTypeProjectile {
 		// Standard physics for other entities
 		// Get ship config for physics properties
 		shipConfig := GetShipTypeConfig(e.ShipType)
-		
+
 		// Handle rotation (angular velocity)
 		rotationInput := e.Input.GetRotation()
 		if math.Abs(rotationInput) > 0.01 {
@@ -264,8 +266,6 @@ func (e *Entity) Update(deltaTime float64) {
 		// Apply friction to velocity
 		e.VX *= shipConfig.Friction
 		e.VY *= shipConfig.Friction
-
-		// No speed limit for ships (as requested)
 	} else if e.Type == EntityTypeProjectile {
 		// Projectiles maintain their velocity without physics
 		// (they're already set when created)
@@ -283,9 +283,10 @@ func (e *Entity) Update(deltaTime float64) {
 				dy /= distance
 
 				// XP speed (faster when closer for better feel)
-				xpSpeed := 300.0
+				// Speed limit is enforced globally by clampSpeed() for all entities
+				xpSpeed := MaxEntitySpeed
 				if distance < 50.0 {
-					xpSpeed = 600.0 // Speed up when close
+					xpSpeed = MaxEntitySpeed * 1.2 // Speed up when close (will be clamped to MaxEntitySpeed)
 				}
 
 				// Set velocity toward target
@@ -295,9 +296,22 @@ func (e *Entity) Update(deltaTime float64) {
 		}
 	}
 
+	// Apply speed limit to all entities (after all velocity updates)
+	e.clampSpeed()
+
 	// Apply velocity to position
 	e.X += e.VX * deltaTime
 	e.Y += e.VY * deltaTime
+}
+
+// clampSpeed clamps the entity's velocity to the maximum speed
+func (e *Entity) clampSpeed() {
+	currentSpeed := math.Sqrt(e.VX*e.VX + e.VY*e.VY)
+	if currentSpeed > MaxEntitySpeed {
+		scale := MaxEntitySpeed / currentSpeed
+		e.VX *= scale
+		e.VY *= scale
+	}
 }
 
 // DistanceTo calculates the distance to another entity
