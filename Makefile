@@ -34,7 +34,6 @@ dev:
 	@echo "Starting file watcher with compile-daemon..."
 	go run github.com/githubnemo/CompileDaemon -command=".\$(APP_EXE)" -build="go build -o .\$(APP_EXE) ." -include="*.go" -exclude-dir="tmp,vendor"
 
-watch: dev
 
 test:
 	@echo "Running tests..."
