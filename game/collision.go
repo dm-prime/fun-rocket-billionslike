@@ -1,5 +1,9 @@
 package game
 
+// RocketToRocketCollisionRadius is the collision radius used for rocket-to-rocket collisions
+// This is much larger than the normal rocket radius to make rockets collide more easily
+const RocketToRocketCollisionRadius = 40.0
+
 // CollisionSystem handles collision detection using spatial partitioning
 type CollisionSystem struct {
 	world *World
@@ -50,6 +54,18 @@ func (c *CollisionSystem) CheckCollisions() {
 					continue
 				}
 
+				// Special handling for rocket-to-rocket collisions: always check with larger radius
+				isRocketToRocket := entity.Type == EntityTypeHomingRocket && other.Type == EntityTypeHomingRocket
+
+				if isRocketToRocket {
+					// Use larger radius for rocket-to-rocket collisions
+					distance := entity.DistanceTo(other)
+					if distance < (RocketToRocketCollisionRadius * 2) {
+						c.HandleCollision(entity, other)
+					}
+					continue
+				}
+
 				// Skip collision if both entities have NoCollision flag (they pass through each other)
 				if entity.NoCollision && other.NoCollision {
 					continue
@@ -89,6 +105,14 @@ func (c *CollisionSystem) HandleCollision(e1, e2 *Entity) {
 	}
 	if e2.Type == EntityTypeProjectile {
 		c.HandleProjectileCollision(e2, e1)
+		return
+	}
+
+	// Handle rocket-to-rocket collisions
+	if e1.Type == EntityTypeHomingRocket && e2.Type == EntityTypeHomingRocket {
+		// Both are rockets - they explode on collision
+		e1.Health = 0 // Destroy both rockets
+		e2.Health = 0
 		return
 	}
 
