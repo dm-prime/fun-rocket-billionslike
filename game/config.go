@@ -5,6 +5,12 @@ type Config struct {
 	// CellSize is the size of each spatial partition cell in pixels
 	CellSize float64
 
+	// WorldMinX is the minimum X coordinate of the world
+	WorldMinX float64
+
+	// WorldMinY is the minimum Y coordinate of the world
+	WorldMinY float64
+
 	// WorldWidth is the total width of the game world in pixels
 	WorldWidth float64
 
@@ -21,9 +27,11 @@ type Config struct {
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		CellSize:     2048.0, // 8x larger than before (256.0 * 8)
-		WorldWidth:   10000.0,
-		WorldHeight:  10000.0,
+		CellSize:     2048.0,
+		WorldMinX:    -100000.0,
+		WorldMinY:    -100000.0,
+		WorldWidth:   200000.0, // From -100000 to 100000
+		WorldHeight:  200000.0, // From -100000 to 100000
 		ScreenWidth:  1024,
 		ScreenHeight: 768,
 	}

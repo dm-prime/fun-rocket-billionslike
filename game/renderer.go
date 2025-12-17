@@ -976,10 +976,10 @@ func (r *Renderer) renderCellGrid(screen *ebiten.Image, world *World) {
 	maxY += world.Config.CellSize
 
 	// Clamp to world bounds
-	minX = math.Max(0, math.Min(minX, world.Config.WorldWidth))
-	minY = math.Max(0, math.Min(minY, world.Config.WorldHeight))
-	maxX = math.Max(0, math.Min(maxX, world.Config.WorldWidth))
-	maxY = math.Max(0, math.Min(maxY, world.Config.WorldHeight))
+	minX = math.Max(world.Config.WorldMinX, math.Min(minX, world.Config.WorldMinX+world.Config.WorldWidth))
+	minY = math.Max(world.Config.WorldMinY, math.Min(minY, world.Config.WorldMinY+world.Config.WorldHeight))
+	maxX = math.Max(world.Config.WorldMinX, math.Min(maxX, world.Config.WorldMinX+world.Config.WorldWidth))
+	maxY = math.Max(world.Config.WorldMinY, math.Min(maxY, world.Config.WorldMinY+world.Config.WorldHeight))
 
 	// Calculate cell boundaries
 	cellSize := world.Config.CellSize

@@ -108,8 +108,8 @@ func NewGame(config Config) *Game {
 func (g *Game) createPlayer() {
 	playerInput := NewPlayerInput()
 	g.player = NewEntityWithShipType(
-		g.config.WorldWidth/2,
-		g.config.WorldHeight/2,
+		g.config.WorldMinX+g.config.WorldWidth/2,
+		g.config.WorldMinY+g.config.WorldHeight/2,
 		EntityTypePlayer,
 		ShipTypePlayer,
 		playerInput,
@@ -361,24 +361,24 @@ func (g *Game) spawnEnemy() {
 		y = g.player.Y + math.Sin(angle)*spawnDistance
 
 		// Clamp to world bounds
-		x = math.Max(0, math.Min(x, g.config.WorldWidth))
-		y = math.Max(0, math.Min(y, g.config.WorldHeight))
+		x = math.Max(g.config.WorldMinX, math.Min(x, g.config.WorldMinX+g.config.WorldWidth))
+		y = math.Max(g.config.WorldMinY, math.Min(y, g.config.WorldMinY+g.config.WorldHeight))
 	} else {
 		// Fallback: spawn at edge of world
 		side := rand.Intn(4)
 		switch side {
 		case 0: // Top
-			x = rand.Float64() * g.config.WorldWidth
-			y = 0
+			x = g.config.WorldMinX + rand.Float64()*g.config.WorldWidth
+			y = g.config.WorldMinY
 		case 1: // Right
-			x = g.config.WorldWidth
-			y = rand.Float64() * g.config.WorldHeight
+			x = g.config.WorldMinX + g.config.WorldWidth
+			y = g.config.WorldMinY + rand.Float64()*g.config.WorldHeight
 		case 2: // Bottom
-			x = rand.Float64() * g.config.WorldWidth
-			y = g.config.WorldHeight
+			x = g.config.WorldMinX + rand.Float64()*g.config.WorldWidth
+			y = g.config.WorldMinY + g.config.WorldHeight
 		case 3: // Left
-			x = 0
-			y = rand.Float64() * g.config.WorldHeight
+			x = g.config.WorldMinX
+			y = g.config.WorldMinY + rand.Float64()*g.config.WorldHeight
 		}
 	}
 

@@ -297,8 +297,8 @@ func (e *Entity) Update(deltaTime float64) {
 	}
 
 	// Apply speed limit to all entities (after all velocity updates)
-	// XP entities are exempt to allow them to catch up to the player
-	if e.Type != EntityTypeXP {
+	// XP entities and projectiles are exempt (projectiles inherit ship velocity so need higher cap)
+	if e.Type != EntityTypeXP && e.Type != EntityTypeProjectile {
 		e.clampSpeed()
 	}
 

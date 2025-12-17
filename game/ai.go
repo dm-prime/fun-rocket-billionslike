@@ -290,8 +290,8 @@ func UpdateEnemyAI(aiInput *AIInput, entity *Entity, player *Entity, deltaTime f
 
 	case AIBehaviorCircle:
 		// Circle around a point
-		centerX := 5000.0 // World center
-		centerY := 5000.0
+		centerX := 0.0 // World center
+		centerY := 0.0
 		radius := 200.0
 		angle := aiInput.PatternTime * 0.5
 		aiInput.TargetX = centerX + math.Cos(angle)*radius

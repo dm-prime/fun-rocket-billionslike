@@ -42,8 +42,12 @@ func NewWorld(config Config) *World {
 
 // WorldToCell converts world coordinates to cell coordinates
 func (w *World) WorldToCell(x, y float64) (int, int) {
-	cellX := int(x / w.Config.CellSize)
-	cellY := int(y / w.Config.CellSize)
+	// Offset by world origin to convert to cell coordinates
+	offsetX := x - w.Config.WorldMinX
+	offsetY := y - w.Config.WorldMinY
+
+	cellX := int(offsetX / w.Config.CellSize)
+	cellY := int(offsetY / w.Config.CellSize)
 
 	// Clamp to valid cell range
 	cellX = max(0, min(cellX, w.Config.CellCountX()-1))
