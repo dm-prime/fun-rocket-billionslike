@@ -275,6 +275,13 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		radius = 1
 	}
 
+	// Ship config is reused across multiple draw features (shape + turret mounts).
+	// Keep it in the outer scope so later blocks (like turret rendering) can access it.
+	shipConfig := ShipTypeConfig{Shape: ShipShapeCircle}
+	if entity.Type != EntityTypeProjectile {
+		shipConfig = GetShipTypeConfig(entity.ShipType)
+	}
+
 	// Draw entity based on type and shape
 	// For small entities (radius < 3), always use circles to reduce draw calls
 	if radius < 3.0 {
@@ -285,14 +292,6 @@ func (r *Renderer) renderEntityWithAim(screen *ebiten.Image, entity *Entity, pla
 		// Homing rockets are always rendered as triangles pointing at target
 		r.drawTriangle(screen, sx, sy, radius, entity.Rotation, clr, ShipTypePlayer, true) // true = is homing rocket
 	} else {
-		// Get ship config for shape (cache it since we use it multiple times)
-		var shipConfig ShipTypeConfig
-		if entity.Type != EntityTypeProjectile {
-			shipConfig = GetShipTypeConfig(entity.ShipType)
-		} else {
-			shipConfig = ShipTypeConfig{Shape: ShipShapeCircle}
-		}
-
 		switch shipConfig.Shape {
 		case ShipShapeCircle:
 			r.circleCount++

@@ -266,7 +266,6 @@ func (e *Entity) Update(deltaTime float64) {
 		e.VY *= shipConfig.Friction
 
 		// No speed limit for ships (as requested)
-	}
 	} else if e.Type == EntityTypeProjectile {
 		// Projectiles maintain their velocity without physics
 		// (they're already set when created)
