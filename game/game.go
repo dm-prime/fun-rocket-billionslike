@@ -503,9 +503,9 @@ func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weap
 		projectile.Owner = owner                     // Track who fired this projectile
 		projectile.Faction = GetEntityFaction(owner) // Inherit faction from owner
 
-		// Set velocity based on shoot rotation
-		projectile.VX = math.Cos(rotation) * weaponConfig.ProjectileSpeed
-		projectile.VY = math.Sin(rotation) * weaponConfig.ProjectileSpeed
+		// Set velocity based on shoot rotation, inheriting ship's velocity
+		projectile.VX = math.Cos(rotation)*weaponConfig.ProjectileSpeed + owner.VX
+		projectile.VY = math.Sin(rotation)*weaponConfig.ProjectileSpeed + owner.VY
 		projectile.Rotation = rotation // Set projectile rotation to match direction
 
 		g.world.RegisterEntity(projectile)
@@ -519,9 +519,9 @@ func (g *Game) spawnBullet(spawnX, spawnY, rotation float64, owner *Entity, weap
 		projectile.Owner = owner                     // Track who fired this projectile
 		projectile.Faction = GetEntityFaction(owner) // Inherit faction from owner
 
-		// Set velocity based on shoot rotation
-		projectile.VX = math.Cos(rotation) * weaponConfig.ProjectileSpeed
-		projectile.VY = math.Sin(rotation) * weaponConfig.ProjectileSpeed
+		// Set velocity based on shoot rotation, inheriting ship's velocity
+		projectile.VX = math.Cos(rotation)*weaponConfig.ProjectileSpeed + owner.VX
+		projectile.VY = math.Sin(rotation)*weaponConfig.ProjectileSpeed + owner.VY
 		projectile.Rotation = rotation // Set projectile rotation to match direction
 
 		g.world.RegisterEntity(projectile)
