@@ -829,12 +829,37 @@ func (r *Renderer) drawTransparentLineWithWidth(screen *ebiten.Image, x1, y1, x2
 		return
 	}
 
-	// Calculate line bounds for temporary image
+	// Clip line to screen bounds to prevent creating huge images
+	// Ebiten has a maximum texture size (typically 4096x4096)
 	margin := width + 2
-	minX := math.Min(x1, x2) - margin
-	maxX := math.Max(x1, x2) + margin
-	minY := math.Min(y1, y2) - margin
-	maxY := math.Max(y1, y2) + margin
+	screenMinX := -margin
+	screenMaxX := r.camera.Width + margin
+	screenMinY := -margin
+	screenMaxY := r.camera.Height + margin
+
+	// Clip line endpoints to screen bounds using Liang-Barsky algorithm
+	// Simplified version: clip to axis-aligned bounding box
+	clippedX1, clippedY1, clippedX2, clippedY2 := x1, y1, x2, y2
+
+	// If line is completely outside screen bounds, skip drawing
+	if (clippedX1 < screenMinX && clippedX2 < screenMinX) ||
+		(clippedX1 > screenMaxX && clippedX2 > screenMaxX) ||
+		(clippedY1 < screenMinY && clippedY2 < screenMinY) ||
+		(clippedY1 > screenMaxY && clippedY2 > screenMaxY) {
+		return
+	}
+
+	// Clip to screen bounds
+	clippedX1 = math.Max(screenMinX, math.Min(clippedX1, screenMaxX))
+	clippedY1 = math.Max(screenMinY, math.Min(clippedY1, screenMaxY))
+	clippedX2 = math.Max(screenMinX, math.Min(clippedX2, screenMaxX))
+	clippedY2 = math.Max(screenMinY, math.Min(clippedY2, screenMaxY))
+
+	// Calculate line bounds for temporary image (now clipped)
+	minX := math.Min(clippedX1, clippedX2) - margin
+	maxX := math.Max(clippedX1, clippedX2) + margin
+	minY := math.Min(clippedY1, clippedY2) - margin
+	maxY := math.Max(clippedY1, clippedY2) + margin
 
 	imgWidth := int(maxX - minX)
 	imgHeight := int(maxY - minY)
@@ -842,14 +867,22 @@ func (r *Renderer) drawTransparentLineWithWidth(screen *ebiten.Image, x1, y1, x2
 		return
 	}
 
+	// Enforce maximum texture size (4096x4096 is a common limit)
+	const maxTextureSize = 4096
+	if imgWidth > maxTextureSize || imgHeight > maxTextureSize {
+		// Skip drawing if image would be too large
+		return
+	}
+
 	// Create temporary image for the line
 	lineImg := ebiten.NewImage(imgWidth, imgHeight)
 
 	// Draw line on temporary image with full brightness, alpha controls intensity
-	lineX1 := float32(x1 - minX)
-	lineY1 := float32(y1 - minY)
-	lineX2 := float32(x2 - minX)
-	lineY2 := float32(y2 - minY)
+	// Use clipped coordinates
+	lineX1 := float32(clippedX1 - minX)
+	lineY1 := float32(clippedY1 - minY)
+	lineX2 := float32(clippedX2 - minX)
+	lineY2 := float32(clippedY2 - minY)
 
 	// Scale color by alpha for additive blending intensity
 	addClr := color.RGBA{
