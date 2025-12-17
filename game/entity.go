@@ -283,10 +283,10 @@ func (e *Entity) Update(deltaTime float64) {
 				dy /= distance
 
 				// XP speed (faster when closer for better feel)
-				// Speed limit is enforced globally by clampSpeed() for all entities
-				xpSpeed := MaxEntitySpeed
+				// XP entities can exceed MaxEntitySpeed to catch up to the player
+				xpSpeed := MaxEntitySpeed * 1.5 // Base speed higher than max to catch player
 				if distance < 50.0 {
-					xpSpeed = MaxEntitySpeed * 1.2 // Speed up when close (will be clamped to MaxEntitySpeed)
+					xpSpeed = MaxEntitySpeed * 2.0 // Speed up even more when close
 				}
 
 				// Set velocity toward target
@@ -297,7 +297,10 @@ func (e *Entity) Update(deltaTime float64) {
 	}
 
 	// Apply speed limit to all entities (after all velocity updates)
-	e.clampSpeed()
+	// XP entities are exempt to allow them to catch up to the player
+	if e.Type != EntityTypeXP {
+		e.clampSpeed()
+	}
 
 	// Apply velocity to position
 	e.X += e.VX * deltaTime
